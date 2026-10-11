@@ -132,11 +132,16 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     private var temporaryDescription: NSTextField!
     private var permanentIcon: NSImageView!
     private var temporaryIcon: NSImageView!
+    private var needsWindowRecovery = false
+    private static let collectionBehavior: NSWindow.CollectionBehavior = [
+        .canJoinAllSpaces, .stationary, .ignoresCycle
+    ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         ProcessInfo.processInfo.disableAutomaticTermination("Dinky notification HUD is displaying notifications")
         createPanel()
+        observeSystemChanges()
         Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
             self?.refresh()
         }
@@ -155,7 +160,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         panel.backgroundColor = .clear
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        panel.collectionBehavior = Self.collectionBehavior
 
         (permanentBar, permanentTitle, permanentDescription, permanentIcon) = makeBar(
             symbol: "circle.fill", titleSize: 15
@@ -165,6 +170,39 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         )
         panel.contentView?.addSubview(permanentBar)
         panel.contentView?.addSubview(temporaryBar)
+    }
+
+    // Sleep, display reconfiguration, and Space switches can leave the panel
+    // pinned to a single Space or a stale screen; re-home it when they occur.
+    private func observeSystemChanges() {
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didWakeNotification,
+                     NSWorkspace.screensDidWakeNotification,
+                     NSWorkspace.sessionDidBecomeActiveNotification,
+                     NSWorkspace.activeSpaceDidChangeNotification] {
+            workspaceCenter.addObserver(self, selector: #selector(systemDidChange(_:)),
+                                        name: name, object: nil)
+        }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(systemDidChange(_:)),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil
+        )
+    }
+
+    @objc private func systemDidChange(_ notification: Notification) {
+        scheduleWindowRecovery()
+        guard notification.name != NSWorkspace.activeSpaceDidChangeNotification else { return }
+        // Displays often reconnect in stages after wake, so recover again once they settle.
+        for delay in [1.0, 3.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                self?.scheduleWindowRecovery()
+            }
+        }
+    }
+
+    private func scheduleWindowRecovery() {
+        needsWindowRecovery = true
+        refresh()
     }
 
     private func makeBar(symbol: String, titleSize: CGFloat)
@@ -270,6 +308,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         temporaryBar.isHidden = temporary == nil
         guard permanent != nil || temporary != nil else {
             panel.orderOut(nil)
+            needsWindowRecovery = false
             return
         }
         let permanentHeight: CGFloat = permanent?.description?.isEmpty == false ? 68 : 54
@@ -282,6 +321,14 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
                                     width: 420, height: permanentHeight)
         temporaryBar.frame = NSRect(x: 0, y: 0, width: 420, height: temporaryHeight)
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        if needsWindowRecovery || !panel.isVisible {
+            panel.collectionBehavior = Self.collectionBehavior
+            panel.level = .statusBar
+        }
+        if needsWindowRecovery {
+            needsWindowRecovery = false
+            panel.orderOut(nil)
+        }
         let visible = screen.visibleFrame
         panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
                                      y: visible.maxY - panel.frame.height - 18))
