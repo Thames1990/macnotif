@@ -10,9 +10,11 @@ adaptive HUD material and Dinky's active border color.
 ./build.sh
 ```
 
-Compiles `main.swift`, installs `~/Applications/DinkyModeHUD.app` with the
-`dinky-notify` CLI wrapper, and signs the app ad-hoc. Requires macOS and the
-Swift compiler supplied by Xcode or its Command Line Tools.
+Compiles `main.swift`, installs `~/Applications/DinkyModeHUD.app` and a
+`dinky-notify` command in `~/.local/bin`, and signs the app ad-hoc. Requires
+macOS and the Swift compiler supplied by Xcode or its Command Line Tools.
+Ensure `~/.local/bin` is on `PATH`; for zsh, add
+`export PATH="$HOME/.local/bin:$PATH"` to `~/.zprofile` if needed.
 
 This replaces the repository's older `DinkyNotify.app` notification helper.
 Update hooks referencing that helper to the HUD path below. The HUD uses
@@ -21,15 +23,12 @@ The old app is not removed by the build script.
 
 ## Usage
 
-The examples use the installed wrapper directly; it is not added to `PATH`.
-
 ```sh
-NOTIFY="$HOME/Applications/DinkyModeHUD.app/Contents/MacOS/dinky-notify"
-"$NOTIFY" mode resize
-"$NOTIFY" mode main
-"$NOTIFY" --title "Layout changed: Tiles" --duration 1
-"$NOTIFY" --title "Working" --description "Persistent notice" --mode permanent
-"$NOTIFY" end
+dinky-notify mode resize
+dinky-notify mode main
+dinky-notify --title "Layout changed: Tiles" --duration 1
+dinky-notify --title "Working" --description "Persistent notice" --mode permanent
+dinky-notify end
 ```
 
 `mode <name>` displays **MODE: <name>** permanently for any non-main mode.
@@ -54,7 +53,7 @@ In `~/.config/dinky/dinky.toml`, add the command to the global `[hooks]` table:
 
 ```toml
 [hooks]
-mode-changed = ['exec-and-forget "$HOME/Applications/DinkyModeHUD.app/Contents/MacOS/dinky-notify" mode "$DINKY_MODE"']
+mode-changed = ['exec-and-forget dinky-notify mode "$DINKY_MODE"']
 ```
 
 This covers every mode change, including entering or leaving `resize`, and
@@ -66,7 +65,7 @@ For a temporary layout notice, add this after the layout command in its
 existing binding:
 
 ```toml
-'exec-and-forget "$HOME/Applications/DinkyModeHUD.app/Contents/MacOS/dinky-notify" --title "Layout changed: Tiles" --duration 1'
+'exec-and-forget dinky-notify --title "Layout changed: Tiles" --duration 1'
 ```
 
 Run `dinky reload-config` and `dinky doctor`, then enter resize mode to see
