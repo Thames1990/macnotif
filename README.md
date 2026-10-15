@@ -4,17 +4,59 @@ Small macOS HUD for Dinky mode indicators and temporary notifications. A
 persistent mode bar stays above a separate temporary notice bar, using macOS's
 adaptive HUD material and Dinky's active border color.
 
-## Build and install
+## Homebrew installation
+
+Requires macOS Sequoia (15) or later. Install the native executable for your
+Mac with:
+
+```sh
+brew install Thames1990/tap/dinky-notify
+```
+
+Homebrew verifies the downloaded release archive against its SHA-256 checksum
+and links `dinky-notify` into Homebrew's standard `bin` directory. Installation
+does not require Xcode or Command Line Tools and does not change PATH or shell
+profiles. Invoke `dinky-notify` by name when Homebrew's `bin` directory is
+already on PATH.
+
+The formula installs one unsigned executable, not an app bundle or shell
+launcher. It requires macOS Sequoia (15) or later.
+
+An existing `~/.local/bin/dinky-notify` manual-install symlink is left
+untouched. If both that directory and Homebrew's `bin` are on PATH, command
+precedence depends on their order; inspect it with `command -v dinky-notify`.
+To remove the old manual symlink when you choose to migrate:
+
+```sh
+rm ~/.local/bin/dinky-notify
+```
+
+## Maintainer releases
+
+Push a `vMAJOR.MINOR.PATCH` tag to build and smoke-test native arm64 and x86_64
+executables, publish both archives and their `SHA256SUMS` file as a public
+release in `Thames1990/homebrew-tap`, update its formula, and verify Homebrew
+installation on both architectures. Pull requests and branch pushes run
+validation only; they do not publish releases.
+
+Before the first release, configure a fine-grained personal access token
+restricted to `Thames1990/homebrew-tap` with **Contents: read and write**
+permission. Store it as the `HOMEBREW_TAP_TOKEN` Actions secret in the private
+`Thames1990/dinky-notify` repository. The workflow uses it only to publish the
+public release and update the formula; the token value must not be committed
+or logged.
+
+## Manual build and install
 
 ```sh
 ./build.sh
 ```
 
-Compiles `main.swift`, installs `~/Applications/DinkyModeHUD.app` and a
-`dinky-notify` command in `~/.local/bin`, and signs the app ad-hoc. Requires
-macOS and the Swift compiler supplied by Xcode or its Command Line Tools.
-Ensure `~/.local/bin` is on `PATH`; for zsh, add
-`export PATH="$HOME/.local/bin:$PATH"` to `~/.zprofile` if needed.
+This legacy installer compiles `main.swift`, installs
+`~/Applications/DinkyModeHUD.app` and a `dinky-notify` command in
+`~/.local/bin`, and signs the app ad-hoc. It requires macOS Sequoia (15) or
+later and the Swift compiler supplied by Xcode or its Command Line Tools.
+Ensure `~/.local/bin` is on PATH if you want to use this installation by name.
 
 This replaces the repository's older `DinkyNotify.app` notification helper.
 Update hooks referencing that helper to the HUD path below. The HUD uses

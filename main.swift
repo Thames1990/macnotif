@@ -2,7 +2,6 @@ import AppKit
 import Foundation
 
 let home = FileManager.default.homeDirectoryForCurrentUser
-let appURL = home.appendingPathComponent("Applications/DinkyModeHUD.app")
 let supportURL = home.appendingPathComponent("Library/Application Support/DinkyModeHUD")
 let permanentURL = supportURL.appendingPathComponent("permanent.json")
 let temporaryURL = supportURL.appendingPathComponent("temporary.json")
@@ -94,14 +93,19 @@ func runCommandLine() throws {
     let destination = mode == "permanent" ? permanentURL : temporaryURL
     let data = try JSONEncoder().encode(message)
     try data.write(to: destination, options: .atomic)
+    guard let executableURL = Bundle.main.executableURL else {
+        throw CLIError.executableUnavailable
+    }
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-g", "-a", appURL.path]
+    process.executableURL = executableURL
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
     try process.run()
 }
 
 enum CLIError: Error, CustomStringConvertible {
-    case usage, missingTitle, invalidMode, invalidDuration, invalidColor
+    case usage, missingTitle, invalidMode, invalidDuration, invalidColor, executableUnavailable
     var description: String {
         switch self {
         case .usage: return "Usage: dinky-notify --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | dinky-notify mode NAME | dinky-notify end"
@@ -109,6 +113,7 @@ enum CLIError: Error, CustomStringConvertible {
         case .invalidMode: return "dinky-notify: mode must be temporary or permanent"
         case .invalidDuration: return "dinky-notify: duration must be a positive number of seconds"
         case .invalidColor: return "dinky-notify: border color must be a 6- or 8-digit hex color"
+        case .executableUnavailable: return "dinky-notify: cannot locate the HUD executable"
         }
     }
 }
