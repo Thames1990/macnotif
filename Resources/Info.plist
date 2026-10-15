@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key>
-    <string>DinkyModeHUD</string>
+    <string>macnotif</string>
     <key>CFBundleIdentifier</key>
-    <string>local.thomas.dinky-mode-hud</string>
+    <string>com.mohrworks.macnotif</string>
     <key>CFBundleName</key>
-    <string>Dinky Mode HUD</string>
+    <string>MacNotif</string>
     <key>CFBundleDisplayName</key>
-    <string>Dinky Mode HUD</string>
+    <string>MacNotif</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>LSUIElement</key>

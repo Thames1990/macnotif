@@ -3,11 +3,10 @@ import Darwin
 import Foundation
 
 let home = FileManager.default.homeDirectoryForCurrentUser
-let supportURL = home.appendingPathComponent("Library/Application Support/DinkyModeHUD")
+let supportURL = home.appendingPathComponent("Library/Application Support/MacNotif")
 let hudLockURL = supportURL.appendingPathComponent("hud.lock")
 let permanentURL = supportURL.appendingPathComponent("permanent.json")
 let temporaryURL = supportURL.appendingPathComponent("temporary.json")
-let configURL = home.appendingPathComponent(".config/dinky/dinky.toml")
 
 struct HUDMessage: Codable {
     let id: String
@@ -36,7 +35,7 @@ func color(from hex: String?) -> NSColor? {
 func runCommandLine() throws {
     let args = Array(CommandLine.arguments.dropFirst())
     try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
-    if args == ["end"] {
+    if args == ["--clear"] {
         if FileManager.default.fileExists(atPath: permanentURL.path) {
             try FileManager.default.removeItem(at: permanentURL)
         }
@@ -48,37 +47,26 @@ func runCommandLine() throws {
     var mode = "temporary"
     var borderColor: String?
     var duration: TimeInterval = 1
-    if args.count == 2, args[0] == "mode" {
-        if args[1] == "main" {
-            if FileManager.default.fileExists(atPath: permanentURL.path) {
-                try FileManager.default.removeItem(at: permanentURL)
+    var index = 0
+    while index < args.count {
+        let option = args[index]
+        guard index + 1 < args.count else { throw CLIError.usage }
+        let value = args[index + 1]
+        switch option {
+        case "--title": title = value
+        case "--description": messageDescription = value
+        case "--mode": mode = value
+        case "--border-color":
+            guard color(from: value) != nil else { throw CLIError.invalidColor }
+            borderColor = value
+        case "--duration":
+            guard let parsed = TimeInterval(value), parsed.isFinite, parsed > 0 else {
+                throw CLIError.invalidDuration
             }
-            return
+            duration = parsed
+        default: throw CLIError.usage
         }
-        title = "MODE: \(args[1])"
-        mode = "permanent"
-    } else {
-        var index = 0
-        while index < args.count {
-            let option = args[index]
-            guard index + 1 < args.count else { throw CLIError.usage }
-            let value = args[index + 1]
-            switch option {
-            case "--title": title = value
-            case "--description": messageDescription = value
-            case "--mode": mode = value
-            case "--border-color":
-                guard color(from: value) != nil else { throw CLIError.invalidColor }
-                borderColor = value
-            case "--duration":
-                guard let parsed = TimeInterval(value), parsed.isFinite, parsed > 0 else {
-                    throw CLIError.invalidDuration
-                }
-                duration = parsed
-            default: throw CLIError.usage
-            }
-            index += 2
-        }
+        index += 2
     }
     guard let title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
         throw CLIError.missingTitle
@@ -110,12 +98,12 @@ enum CLIError: Error, CustomStringConvertible {
     case usage, missingTitle, invalidMode, invalidDuration, invalidColor, executableUnavailable
     var description: String {
         switch self {
-        case .usage: return "Usage: dinky-notify --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | dinky-notify mode NAME | dinky-notify end"
-        case .missingTitle: return "dinky-notify: --title is required and must not be empty"
-        case .invalidMode: return "dinky-notify: mode must be temporary or permanent"
-        case .invalidDuration: return "dinky-notify: duration must be a positive number of seconds"
-        case .invalidColor: return "dinky-notify: border color must be a 6- or 8-digit hex color"
-        case .executableUnavailable: return "dinky-notify: cannot locate the HUD executable"
+        case .usage: return "Usage: macnotif --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | macnotif --clear"
+        case .missingTitle: return "macnotif: --title is required and must not be empty"
+        case .invalidMode: return "macnotif: mode must be temporary or permanent"
+        case .invalidDuration: return "macnotif: duration must be a positive number of seconds"
+        case .invalidColor: return "macnotif: border color must be a 6- or 8-digit hex color"
+        case .executableUnavailable: return "macnotif: cannot locate the HUD executable"
         }
     }
 }
@@ -151,7 +139,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             return
         }
         NSApp.setActivationPolicy(.accessory)
-        ProcessInfo.processInfo.disableAutomaticTermination("Dinky notification HUD is displaying notifications")
+        ProcessInfo.processInfo.disableAutomaticTermination("MacNotif is displaying notices")
         createPanel()
         observeSystemChanges()
         Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
@@ -174,7 +162,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
                 withIntermediateDirectories: true
             )
         } catch {
-            fputs("dinky-notify: cannot create HUD state directory: \(error)\n", stderr)
+            fputs("macnotif: cannot create HUD state directory: \(error)\n", stderr)
             return false
         }
 
@@ -188,7 +176,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             if lockError == EWOULDBLOCK || lockError == EAGAIN {
                 return false
             }
-            fputs("dinky-notify: cannot lock HUD process: \(String(cString: strerror(lockError)))\n", stderr)
+            fputs("macnotif: cannot lock HUD process: \(String(cString: strerror(lockError)))\n", stderr)
             return false
         }
 
@@ -295,33 +283,14 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
 
     private func configuredBorderColor(_ override: String?) -> NSColor {
         if let override, let color = color(from: override) { return color }
-        return color(from: dinkyBorderHex()) ?? .controlAccentColor
-    }
-
-    private func dinkyBorderHex() -> String? {
-        guard let contents = try? String(contentsOf: configURL, encoding: .utf8) else { return nil }
-        var inBorders = false
-        for line in contents.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("[") {
-                inBorders = trimmed == "[borders]"
-                continue
-            }
-            guard inBorders, let separator = trimmed.firstIndex(of: "=") else { continue }
-            let key = trimmed[..<separator].trimmingCharacters(in: .whitespaces)
-            if key == "active-color" {
-                return trimmed[trimmed.index(after: separator)...]
-                    .trimmingCharacters(in: CharacterSet(charactersIn: " '\""))
-            }
-        }
-        return nil
+        return .controlAccentColor
     }
 
     private func readMessage(at url: URL) -> HUDMessage? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do { return try JSONDecoder().decode(HUDMessage.self, from: Data(contentsOf: url)) }
         catch {
-            fputs("dinky-notify: cannot read \(url.lastPathComponent): \(error)\n", stderr)
+            fputs("macnotif: cannot read \(url.lastPathComponent): \(error)\n", stderr)
             return nil
         }
     }
