@@ -1,9 +1,10 @@
 import AppKit
+import Darwin
 import Foundation
 
 let home = FileManager.default.homeDirectoryForCurrentUser
-let appURL = home.appendingPathComponent("Applications/DinkyModeHUD.app")
 let supportURL = home.appendingPathComponent("Library/Application Support/DinkyModeHUD")
+let hudLockURL = supportURL.appendingPathComponent("hud.lock")
 let permanentURL = supportURL.appendingPathComponent("permanent.json")
 let temporaryURL = supportURL.appendingPathComponent("temporary.json")
 let configURL = home.appendingPathComponent(".config/dinky/dinky.toml")
@@ -94,14 +95,19 @@ func runCommandLine() throws {
     let destination = mode == "permanent" ? permanentURL : temporaryURL
     let data = try JSONEncoder().encode(message)
     try data.write(to: destination, options: .atomic)
+    guard let executableURL = Bundle.main.executableURL else {
+        throw CLIError.executableUnavailable
+    }
     let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-    process.arguments = ["-g", "-a", appURL.path]
+    process.executableURL = executableURL
+    process.standardInput = FileHandle.nullDevice
+    process.standardOutput = FileHandle.nullDevice
+    process.standardError = FileHandle.nullDevice
     try process.run()
 }
 
 enum CLIError: Error, CustomStringConvertible {
-    case usage, missingTitle, invalidMode, invalidDuration, invalidColor
+    case usage, missingTitle, invalidMode, invalidDuration, invalidColor, executableUnavailable
     var description: String {
         switch self {
         case .usage: return "Usage: dinky-notify --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | dinky-notify mode NAME | dinky-notify end"
@@ -109,6 +115,7 @@ enum CLIError: Error, CustomStringConvertible {
         case .invalidMode: return "dinky-notify: mode must be temporary or permanent"
         case .invalidDuration: return "dinky-notify: duration must be a positive number of seconds"
         case .invalidColor: return "dinky-notify: border color must be a 6- or 8-digit hex color"
+        case .executableUnavailable: return "dinky-notify: cannot locate the HUD executable"
         }
     }
 }
@@ -132,12 +139,17 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     private var temporaryDescription: NSTextField!
     private var permanentIcon: NSImageView!
     private var temporaryIcon: NSImageView!
+    private var hudLockDescriptor: Int32?
     private var needsWindowRecovery = false
     private static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces, .stationary, .ignoresCycle
     ]
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        guard acquireHUDLock() else {
+            NSApp.terminate(nil)
+            return
+        }
         NSApp.setActivationPolicy(.accessory)
         ProcessInfo.processInfo.disableAutomaticTermination("Dinky notification HUD is displaying notifications")
         createPanel()
@@ -146,6 +158,42 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             self?.refresh()
         }
         refresh()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if let hudLockDescriptor {
+            Darwin.close(hudLockDescriptor)
+            self.hudLockDescriptor = nil
+        }
+    }
+
+    private func acquireHUDLock() -> Bool {
+        do {
+            try FileManager.default.createDirectory(
+                at: supportURL,
+                withIntermediateDirectories: true
+            )
+        } catch {
+            fputs("dinky-notify: cannot create HUD state directory: \(error)\n", stderr)
+            return false
+        }
+
+        let descriptor = Darwin.open(
+            hudLockURL.path,
+            O_CREAT | O_RDWR | O_EXLOCK | O_NONBLOCK,
+            mode_t(S_IRUSR | S_IWUSR)
+        )
+        guard descriptor >= 0 else {
+            let lockError = errno
+            if lockError == EWOULDBLOCK || lockError == EAGAIN {
+                return false
+            }
+            fputs("dinky-notify: cannot lock HUD process: \(String(cString: strerror(lockError)))\n", stderr)
+            return false
+        }
+
+        hudLockDescriptor = descriptor
+        return true
     }
 
     private func createPanel() {

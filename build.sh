@@ -19,7 +19,7 @@ elif [ -e "$CLI" ]; then
 fi
 
 mkdir -p build
-swiftc -O -swift-version 5 main.swift -o build/DinkyModeHUD
+swiftc -O -swift-version 5 -mmacosx-version-min=15.0 main.swift -o build/DinkyModeHUD
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp build/DinkyModeHUD "$APP/Contents/MacOS/DinkyModeHUD"

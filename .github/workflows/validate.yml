@@ -1,0 +1,43 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - "**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.architecture }} macOS
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runner: macos-15
+          - architecture: x86_64
+            runner: macos-15-intel
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build native executable
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+        run: bash scripts/build-release.sh "$ARCHITECTURE" build/dinky-notify
+
+      - name: Test executable behavior
+        run: bash tests/release-smoke.sh build/dinky-notify
+
+      - name: Test formula rendering
+        run: bash tests/formula-template.sh
