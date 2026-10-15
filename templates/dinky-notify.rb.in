@@ -7,7 +7,7 @@ class DinkyNotify < Formula
   homepage "https://github.com/Thames1990/dinky-notify"
   version "@VERSION@"
 
-  depends_on macos: ">= :sequoia"
+  depends_on macos: :sequoia
 
   on_macos do
     on_arm do
