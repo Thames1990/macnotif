@@ -16,16 +16,30 @@ brew install Thames1990/tap/dinky-notify
 Homebrew verifies the downloaded release archive against its SHA-256 checksum
 and links `dinky-notify` into Homebrew's standard `bin` directory. Installation
 does not require Xcode or Command Line Tools and does not change PATH or shell
-profiles. Invoke `dinky-notify` by name when Homebrew's `bin` directory is
-already on PATH.
+profiles. Before invoking `dinky-notify` by name, make sure Homebrew's `bin`
+directory (`$(brew --prefix)/bin`) is on PATH.
+
+Update to a newly published release with:
+
+```sh
+brew update
+brew upgrade dinky-notify
+```
+
+Uninstall the Homebrew-managed version with:
+
+```sh
+brew uninstall dinky-notify
+```
 
 The formula installs one unsigned executable, not an app bundle or shell
 launcher. It requires macOS Sequoia (15) or later.
 
 An existing `~/.local/bin/dinky-notify` manual-install symlink is left
-untouched. If both that directory and Homebrew's `bin` are on PATH, command
-precedence depends on their order; inspect it with `command -v dinky-notify`.
-To remove the old manual symlink when you choose to migrate:
+untouched by both Homebrew installation and uninstallation. If both that
+directory and Homebrew's `bin` are on PATH, command precedence depends on their
+order; inspect it with `command -v dinky-notify`. To remove the old manual
+symlink when you choose to migrate:
 
 ```sh
 rm ~/.local/bin/dinky-notify
