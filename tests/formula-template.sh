@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 test_directory="$(mktemp -d)"
-test_output="$test_directory/dinky-notify.rb"
+test_output="$test_directory/macnotif.rb"
 trap 'rm -rf "$test_directory"' EXIT
 
 arm64_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
@@ -11,15 +11,15 @@ x86_64_sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 bash "$repo_root/scripts/render-formula.sh" 1.2.3 "$arm64_sha256" "$x86_64_sha256" "$test_output"
 
 grep -Fq 'version "1.2.3"' "$test_output"
-grep -Fq 'dinky-notify-#{version}-arm64.tar.gz' "$test_output"
+grep -Fq 'macnotif-#{version}-arm64.tar.gz' "$test_output"
 grep -Fq "sha256 \"$arm64_sha256\"" "$test_output"
-grep -Fq 'dinky-notify-#{version}-x86_64.tar.gz' "$test_output"
+grep -Fq 'macnotif-#{version}-x86_64.tar.gz' "$test_output"
 grep -Fq "sha256 \"$x86_64_sha256\"" "$test_output"
 grep -Fq 'depends_on macos: :sequoia' "$test_output"
 brew ruby -e '
   require "formula"
   load ARGV.fetch(0)
-  formula = DinkyNotify.new("dinky-notify", Pathname.new(ARGV.fetch(0)), :stable)
+  formula = Macnotif.new("macnotif", Pathname.new(ARGV.fetch(0)), :stable)
   abort "Incorrect formula version" unless formula.version.to_s == "1.2.3"
 ' "$test_output"
 if grep -Fq '@' "$test_output"; then

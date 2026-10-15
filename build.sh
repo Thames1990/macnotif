@@ -1,30 +1,36 @@
 #!/usr/bin/env bash
-# Builds DinkyModeHUD and installs it to ~/Applications/DinkyModeHUD.app.
+# Builds MacNotif and installs it to ~/Applications/MacNotif.app.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-APP="$HOME/Applications/DinkyModeHUD.app"
+APP="$HOME/Applications/MacNotif.app"
 BIN="$HOME/.local/bin"
-CLI="$BIN/dinky-notify"
-APP_CLI="$APP/Contents/MacOS/dinky-notify"
+CLI="$BIN/macnotif"
+APP_CLI="$APP/Contents/MacOS/macnotif"
 
 if [ -L "$CLI" ]; then
     if [ "$(readlink "$CLI")" != "$APP_CLI" ]; then
-        echo "Cannot install dinky-notify: $CLI already exists and is not the app command link." >&2
+        echo "Cannot install macnotif: $CLI already exists and is not the app command link." >&2
         exit 1
     fi
 elif [ -e "$CLI" ]; then
-    echo "Cannot install dinky-notify: $CLI already exists and is not the app command link." >&2
+    echo "Cannot install macnotif: $CLI already exists and is not the app command link." >&2
     exit 1
 fi
 
 mkdir -p build
-swiftc -O -swift-version 5 -mmacosx-version-min=15.0 main.swift -o build/DinkyModeHUD
+architecture="$(uname -m)"
+case "$architecture" in
+    arm64|x86_64) ;;
+    *)
+        echo "Unsupported architecture: $architecture" >&2
+        exit 1
+        ;;
+esac
+swiftc -O -swift-version 5 -target "${architecture}-apple-macosx15.0" main.swift -o build/macnotif
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp build/DinkyModeHUD "$APP/Contents/MacOS/DinkyModeHUD"
-cp dinky-notify "$APP/Contents/MacOS/dinky-notify"
-chmod +x "$APP/Contents/MacOS/dinky-notify"
+cp build/macnotif "$APP_CLI"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 
 codesign --force --deep --sign - "$APP"
@@ -38,5 +44,5 @@ echo "Installed $APP"
 echo "Installed command $CLI"
 case ":$PATH:" in
     *":$BIN:"*) ;;
-    *) echo "Add $BIN to PATH to run dinky-notify by name." ;;
+    *) echo "Add $BIN to PATH to run macnotif by name." ;;
 esac

@@ -34,10 +34,10 @@ jobs:
       - name: Build native executable
         env:
           ARCHITECTURE: ${{ matrix.architecture }}
-        run: bash scripts/build-release.sh "$ARCHITECTURE" build/dinky-notify
+        run: bash scripts/build-release.sh "$ARCHITECTURE" build/macnotif
 
       - name: Test executable behavior
-        run: bash tests/release-smoke.sh build/dinky-notify
+        run: bash tests/release-smoke.sh build/macnotif
 
       - name: Test formula rendering
         run: bash tests/formula-template.sh

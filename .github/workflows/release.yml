@@ -42,10 +42,10 @@ jobs:
       - name: Build native executable
         env:
           ARCHITECTURE: ${{ matrix.architecture }}
-        run: bash scripts/build-release.sh "$ARCHITECTURE" build/dinky-notify
+        run: bash scripts/build-release.sh "$ARCHITECTURE" build/macnotif
 
       - name: Verify executable behavior
-        run: bash tests/release-smoke.sh build/dinky-notify
+        run: bash tests/release-smoke.sh build/macnotif
 
       - name: Package release archive
         env:
@@ -56,9 +56,9 @@ jobs:
           mkdir -p dist
           archive_directory="$(mktemp -d)"
           trap 'rm -rf "$archive_directory"' EXIT
-          cp build/dinky-notify "$archive_directory/dinky-notify"
-          tar -czf "dist/dinky-notify-${version}-${ARCHITECTURE}.tar.gz" \
-            -C "$archive_directory" dinky-notify
+          cp build/macnotif "$archive_directory/macnotif"
+          tar -czf "dist/macnotif-${version}-${ARCHITECTURE}.tar.gz" \
+            -C "$archive_directory" macnotif
 
       - name: Upload release archive
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -95,8 +95,8 @@ jobs:
             exit 1
           fi
           version="${TAG_NAME#v}"
-          arm64_archive="dist/dinky-notify-${version}-arm64.tar.gz"
-          x86_64_archive="dist/dinky-notify-${version}-x86_64.tar.gz"
+          arm64_archive="dist/macnotif-${version}-arm64.tar.gz"
+          x86_64_archive="dist/macnotif-${version}-x86_64.tar.gz"
           test -f "$arm64_archive"
           test -f "$x86_64_archive"
           {
@@ -130,8 +130,8 @@ jobs:
             exit 1
           fi
 
-          arm64_name="dinky-notify-${VERSION}-arm64.tar.gz"
-          x86_64_name="dinky-notify-${VERSION}-x86_64.tar.gz"
+          arm64_name="macnotif-${VERSION}-arm64.tar.gz"
+          x86_64_name="macnotif-${VERSION}-x86_64.tar.gz"
           if gh release view "$TAG_NAME" --repo Thames1990/homebrew-tap >/dev/null 2>&1; then
             existing_release="$(mktemp -d)"
             trap 'rm -rf "$existing_release"' EXIT
@@ -172,7 +172,7 @@ jobs:
             printf '%s\n' "$SOURCE_COMMIT" > dist/SOURCE_COMMIT
             gh release create "$TAG_NAME" dist/*.tar.gz dist/SHA256SUMS dist/SOURCE_COMMIT \
               --repo Thames1990/homebrew-tap \
-              --title "dinky-notify $VERSION" \
+              --title "MacNotif $VERSION" \
               --notes "Unsigned native macOS executables for Apple Silicon and Intel. SHA-256 checksums are provided in SHA256SUMS and verified by the formula."
           fi
 
@@ -190,7 +190,7 @@ jobs:
           X86_64_SHA256: ${{ steps.published.outputs.x86_64_sha256 }}
         run: |
           bash scripts/render-formula.sh "$VERSION" "$ARM64_SHA256" "$X86_64_SHA256" \
-            generated/Formula/dinky-notify.rb
+            generated/Formula/macnotif.rb
 
       - name: Check out public tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -206,12 +206,13 @@ jobs:
         run: |
           cd tap
           mkdir -p Formula
-          cp "$GITHUB_WORKSPACE/generated/Formula/dinky-notify.rb" Formula/dinky-notify.rb
+          cp "$GITHUB_WORKSPACE/generated/Formula/macnotif.rb" Formula/macnotif.rb
+          git rm --ignore-unmatch Formula/dinky-notify.rb
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/dinky-notify.rb
+          git add Formula/macnotif.rb
           if ! git diff --cached --quiet; then
-            git commit -m "Update dinky-notify to $VERSION"
+            git commit -m "Update macnotif to $VERSION"
             git push origin HEAD:main
           fi
 
@@ -235,13 +236,13 @@ jobs:
 
       - name: Install from public tap and verify behavior
         run: |
-          manual_bin="$HOME/.local/bin/dinky-notify"
+          manual_bin="$HOME/.local/bin/macnotif"
           if [[ -e "$manual_bin" || -L "$manual_bin" ]]; then
-            echo "The runner already has a dinky-notify manual install; refusing to overwrite it." >&2
+            echo "The runner already has a macnotif manual install; refusing to overwrite it." >&2
             exit 1
           fi
           mkdir -p "$HOME/.local/bin"
-          manual_target="$RUNNER_TEMP/manual-dinky-notify"
+          manual_target="$RUNNER_TEMP/manual-macnotif"
           printf '#!/bin/sh\nexit 0\n' > "$manual_target"
           chmod +x "$manual_target"
           ln -s "$manual_target" "$manual_bin"
@@ -257,9 +258,9 @@ jobs:
           }
           before_path="$PATH"
           before_profiles="$(profile_state)"
-          brew install Thames1990/tap/dinky-notify
-          brew test Thames1990/tap/dinky-notify
-          executable="$(brew --prefix dinky-notify)/bin/dinky-notify"
+          brew install Thames1990/tap/macnotif
+          brew test Thames1990/tap/macnotif
+          executable="$(brew --prefix macnotif)/bin/macnotif"
           test -x "$executable"
           bash tests/release-smoke.sh "$executable"
 

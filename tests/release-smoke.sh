@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-binary=${1:?usage: release-smoke.sh /path/to/dinky-notify}
+binary=${1:?usage: release-smoke.sh /path/to/macnotif}
 binary="$(cd "$(dirname "$binary")" && pwd)/$(basename "$binary")"
 process_name=$(basename "$binary")
 test_home=$(mktemp -d)
@@ -21,17 +21,14 @@ trap cleanup EXIT
 export HOME="$test_home"
 export CFFIXED_USER_HOME="$test_home"
 
+state_dir="$test_home/Library/Application Support/MacNotif"
+permanent_file="$state_dir/permanent.json"
+temporary_file="$state_dir/temporary.json"
 before_pids=$(pgrep -x "$process_name" 2>/dev/null || true)
-if "$binary" mode resize; then
-    :
-else
-    echo "dinky-notify rejected a valid mode command" >&2
-    exit 1
-fi
 
-notice_file="$test_home/Library/Application Support/DinkyModeHUD/permanent.json"
-test -f "$notice_file"
-grep -Fq '"title":"MODE: resize"' "$notice_file"
+"$binary" --title "Persistent notice" --mode permanent
+test -f "$permanent_file"
+grep -Fq '"title":"Persistent notice"' "$permanent_file"
 
 sleep 1
 after_pids=$(pgrep -x "$process_name" 2>/dev/null || true)
@@ -42,12 +39,16 @@ for pid in $after_pids; do
     esac
 done
 if [[ -z "$new_hud_pids" ]]; then
-    echo "dinky-notify did not launch the HUD executable" >&2
+    echo "macnotif did not launch the HUD executable" >&2
     exit 1
 fi
 
+"$binary" --title "Temporary notice" --duration 30
+test -f "$temporary_file"
+grep -Fq '"title":"Temporary notice"' "$temporary_file"
+
 "$binary" --title "Updated release smoke test" --mode permanent
-grep -Fq '"title":"Updated release smoke test"' "$notice_file"
+grep -Fq '"title":"Updated release smoke test"' "$permanent_file"
 sleep 1
 after_pids=$(pgrep -x "$process_name" 2>/dev/null || true)
 for pid in $after_pids; do
@@ -66,11 +67,20 @@ for pid in $after_pids; do
     esac
 done
 
-"$binary" mode main
-test ! -e "$notice_file"
+"$binary" --clear
+test ! -e "$permanent_file"
+test -f "$temporary_file"
 
+if "$binary" mode resize 2>/dev/null; then
+    echo "macnotif accepted the removed mode subcommand" >&2
+    exit 1
+fi
+if "$binary" end 2>/dev/null; then
+    echo "macnotif accepted the removed end subcommand" >&2
+    exit 1
+fi
 if "$binary" --title "Invalid duration" --duration 0 2>/dev/null; then
-    echo "dinky-notify accepted a non-positive duration" >&2
+    echo "macnotif accepted a non-positive duration" >&2
     exit 1
 fi
 
@@ -80,15 +90,12 @@ for pid in $new_hud_pids; do
 done
 new_hud_pids=""
 
-"$binary" end
-test -d "$test_home/Library/Application Support/DinkyModeHUD"
-
 (
     "$binary" >/dev/null 2>&1 &
     hud_pid=$!
     sleep 1
     if ! kill -0 "$hud_pid" 2>/dev/null; then
-        echo "dinky-notify exited instead of keeping the HUD running"
+        echo "macnotif exited instead of keeping the HUD running" >&2
         exit 1
     fi
     kill "$hud_pid"

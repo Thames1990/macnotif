@@ -21,7 +21,7 @@ if [[ ! "$arm64_sha256" =~ ^[[:xdigit:]]{64}$ || ! "$x86_64_sha256" =~ ^[[:xdigi
 fi
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-template="$repo_root/templates/dinky-notify.rb.in"
+template="$repo_root/templates/macnotif.rb.in"
 if [[ "$output" != /* ]]; then
     output="$repo_root/$output"
 fi
