@@ -85,7 +85,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Validate release metadata and render formula
+      - name: Validate release metadata and downloaded builds
         id: release
         env:
           TAG_NAME: ${{ github.ref_name }}
@@ -99,28 +99,10 @@ jobs:
           x86_64_archive="dist/dinky-notify-${version}-x86_64.tar.gz"
           test -f "$arm64_archive"
           test -f "$x86_64_archive"
-          (
-            cd dist
-            sha256sum "dinky-notify-${version}-arm64.tar.gz" \
-              "dinky-notify-${version}-x86_64.tar.gz" > SHA256SUMS
-          )
-          arm64_sha256="$(sha256sum "$arm64_archive" | awk '{print $1}')"
-          x86_64_sha256="$(sha256sum "$x86_64_archive" | awk '{print $1}')"
           {
             echo "tag_name=$TAG_NAME"
             echo "version=$version"
-            echo "arm64_sha256=$arm64_sha256"
-            echo "x86_64_sha256=$x86_64_sha256"
           } >> "$GITHUB_OUTPUT"
-
-      - name: Render formula
-        env:
-          VERSION: ${{ steps.release.outputs.version }}
-          ARM64_SHA256: ${{ steps.release.outputs.arm64_sha256 }}
-          X86_64_SHA256: ${{ steps.release.outputs.x86_64_sha256 }}
-        run: |
-          bash scripts/render-formula.sh "$VERSION" "$ARM64_SHA256" "$X86_64_SHA256" \
-            generated/Formula/dinky-notify.rb
 
       - name: Require tap publishing token
         env:
@@ -131,24 +113,84 @@ jobs:
             exit 1
           fi
 
-      - name: Publish public release artifacts
+      - name: Publish or verify public release artifacts
+        id: published
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG_NAME: ${{ steps.release.outputs.tag_name }}
           VERSION: ${{ steps.release.outputs.version }}
+          SOURCE_COMMIT: ${{ github.sha }}
         run: |
           if [[ -z "$GH_TOKEN" ]]; then
             echo "Configure HOMEBREW_TAP_TOKEN with contents access to Thames1990/homebrew-tap." >&2
             exit 1
           fi
-          if gh release view "$TAG_NAME" --repo Thames1990/homebrew-tap >/dev/null 2>&1; then
-            echo "Release $TAG_NAME already exists in the public tap; refusing to overwrite it." >&2
+          if [[ ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The source commit SHA is invalid." >&2
             exit 1
           fi
-          gh release create "$TAG_NAME" dist/*.tar.gz dist/SHA256SUMS \
-            --repo Thames1990/homebrew-tap \
-            --title "dinky-notify $VERSION" \
-            --notes "Unsigned native macOS executables for Apple Silicon and Intel. SHA-256 checksums are provided in SHA256SUMS and verified by the formula."
+
+          arm64_name="dinky-notify-${VERSION}-arm64.tar.gz"
+          x86_64_name="dinky-notify-${VERSION}-x86_64.tar.gz"
+          if gh release view "$TAG_NAME" --repo Thames1990/homebrew-tap >/dev/null 2>&1; then
+            existing_release="$(mktemp -d)"
+            trap 'rm -rf "$existing_release"' EXIT
+            gh release download "$TAG_NAME" --repo Thames1990/homebrew-tap \
+              --pattern "$arm64_name" \
+              --pattern "$x86_64_name" \
+              --pattern SHA256SUMS \
+              --pattern SOURCE_COMMIT \
+              --dir "$existing_release"
+
+            if [[ "$(cat "$existing_release/SOURCE_COMMIT")" != "$SOURCE_COMMIT" ]]; then
+              echo "Release $TAG_NAME belongs to a different source commit; refusing to replace it." >&2
+              exit 1
+            fi
+            if [[ "$(wc -l < "$existing_release/SHA256SUMS" | tr -d ' ')" != "2" ]]; then
+              echo "Release $TAG_NAME has an invalid checksum manifest." >&2
+              exit 1
+            fi
+            (
+              cd "$existing_release"
+              sha256sum --check SHA256SUMS
+            )
+            arm64_sha256="$(awk -v name="$arm64_name" '$2 == name {print $1}' "$existing_release/SHA256SUMS")"
+            x86_64_sha256="$(awk -v name="$x86_64_name" '$2 == name {print $1}' "$existing_release/SHA256SUMS")"
+            if [[ ! "$arm64_sha256" =~ ^[0-9a-f]{64}$ || ! "$x86_64_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "Release $TAG_NAME is missing architecture checksums." >&2
+              exit 1
+            fi
+            cp "$existing_release/$arm64_name" "dist/$arm64_name"
+            cp "$existing_release/$x86_64_name" "dist/$x86_64_name"
+            cp "$existing_release/SHA256SUMS" dist/SHA256SUMS
+            echo "Verified the existing release for source commit $SOURCE_COMMIT."
+          else
+            (
+              cd dist
+              sha256sum "$arm64_name" "$x86_64_name" > SHA256SUMS
+            )
+            printf '%s\n' "$SOURCE_COMMIT" > dist/SOURCE_COMMIT
+            gh release create "$TAG_NAME" dist/*.tar.gz dist/SHA256SUMS dist/SOURCE_COMMIT \
+              --repo Thames1990/homebrew-tap \
+              --title "dinky-notify $VERSION" \
+              --notes "Unsigned native macOS executables for Apple Silicon and Intel. SHA-256 checksums are provided in SHA256SUMS and verified by the formula."
+          fi
+
+          arm64_sha256="$(awk -v name="$arm64_name" '$2 == name {print $1}' dist/SHA256SUMS)"
+          x86_64_sha256="$(awk -v name="$x86_64_name" '$2 == name {print $1}' dist/SHA256SUMS)"
+          {
+            echo "arm64_sha256=$arm64_sha256"
+            echo "x86_64_sha256=$x86_64_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Render formula from published checksums
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          ARM64_SHA256: ${{ steps.published.outputs.arm64_sha256 }}
+          X86_64_SHA256: ${{ steps.published.outputs.x86_64_sha256 }}
+        run: |
+          bash scripts/render-formula.sh "$VERSION" "$ARM64_SHA256" "$X86_64_SHA256" \
+            generated/Formula/dinky-notify.rb
 
       - name: Check out public tap
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -168,8 +210,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/dinky-notify.rb
-          git commit -m "Update dinky-notify to $VERSION"
-          git push origin HEAD:main
+          if ! git diff --cached --quiet; then
+            git commit -m "Update dinky-notify to $VERSION"
+            git push origin HEAD:main
+          fi
 
   verify-install:
     name: Verify Homebrew install on ${{ matrix.architecture }}
