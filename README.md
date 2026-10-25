@@ -44,6 +44,10 @@ do not migrate automatically; uninstall that formula before installing
 
 ## Maintainer releases
 
+The agreed [release changelog design](docs/release-changelogs.md) describes
+planned curated notes and automatic publication. It is not implemented yet;
+the procedure below describes the current workflow.
+
 To release from GitHub, open **Actions > Release Homebrew formula > Run
 workflow**, select **main**, choose **patch**, **minor**, or **major** (default:
 **patch**), and run the workflow. The next version is calculated from the
