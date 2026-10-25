@@ -45,11 +45,15 @@ do not migrate automatically; uninstall that formula before installing
 ## Maintainer releases
 
 To release from GitHub, open **Actions > Release Homebrew formula > Run
-workflow**, select **main**, enter a version such as `1.1.0` (without `v`),
-and run the workflow. It tags the latest commit on `main` and continues
+workflow**, select **main**, choose **patch**, **minor**, or **major** (default:
+**patch**), and run the workflow. The next version is calculated from the
+latest published release in `Thames1990/homebrew-tap`: from `1.2.3`, patch
+produces `1.2.4`, minor produces `1.3.0`, and major produces `2.0.0`.
+The run stops if the latest release cannot be read or has an invalid version.
+It tags the latest commit on `main` and continues
 publication in the same run. An existing tag is rejected rather than moved.
 If a release fails after its tag is created, rerun the failed workflow jobs
-instead of submitting the same version again.
+instead of starting another release.
 
 Alternatively, push a `vMAJOR.MINOR.PATCH` tag. Both entry points build and
 smoke-test native arm64 and x86_64
