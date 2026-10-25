@@ -1,6 +1,12 @@
 name: Release Homebrew formula
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (for example, 1.1.0)"
+        required: true
+        type: string
   push:
     tags:
       - "v*"
@@ -13,8 +19,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  prepare:
+    name: Resolve release source and tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      source_commit: ${{ steps.release.outputs.source_commit }}
+    steps:
+      - name: Resolve release and create manual tag
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          SELECTED_REF: ${{ github.ref }}
+          VERSION_INPUT: ${{ inputs.version }}
+          TAG_NAME: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$SELECTED_REF" != "refs/heads/main" ]]; then
+              echo "Run manual releases from main." >&2
+              exit 1
+            fi
+            if [[ ! "$VERSION_INPUT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Version must use MAJOR.MINOR.PATCH, got: $VERSION_INPUT" >&2
+              exit 1
+            fi
+            TAG_NAME="v$VERSION_INPUT"
+            SOURCE_COMMIT="$(gh api 'repos/{owner}/{repo}/git/ref/heads/main' --jq .object.sha)"
+          fi
+          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ||
+                ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid release tag or source commit." >&2
+            exit 1
+          fi
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            gh api --method POST 'repos/{owner}/{repo}/git/refs' \
+              -f "ref=refs/tags/$TAG_NAME" -f "sha=$SOURCE_COMMIT" >/dev/null
+          fi
+          {
+            echo "tag_name=$TAG_NAME"
+            echo "source_commit=$SOURCE_COMMIT"
+          } >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.architecture }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -28,11 +82,12 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.source_commit }}
           persist-credentials: false
 
       - name: Validate version tag
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tags must use vMAJOR.MINOR.PATCH, got: $TAG_NAME" >&2
@@ -50,7 +105,7 @@ jobs:
       - name: Package release archive
         env:
           ARCHITECTURE: ${{ matrix.architecture }}
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           version="${TAG_NAME#v}"
           mkdir -p dist
@@ -70,12 +125,13 @@ jobs:
 
   publish:
     name: Publish release and formula
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.source_commit }}
           persist-credentials: false
 
       - name: Download architecture builds
@@ -88,7 +144,7 @@ jobs:
       - name: Validate release metadata and downloaded builds
         id: release
         env:
-          TAG_NAME: ${{ github.ref_name }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
         run: |
           if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tags must use vMAJOR.MINOR.PATCH, got: $TAG_NAME" >&2
@@ -119,7 +175,7 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG_NAME: ${{ steps.release.outputs.tag_name }}
           VERSION: ${{ steps.release.outputs.version }}
-          SOURCE_COMMIT: ${{ github.sha }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
         run: |
           if [[ -z "$GH_TOKEN" ]]; then
             echo "Configure HOMEBREW_TAP_TOKEN with contents access to Thames1990/homebrew-tap." >&2
@@ -218,7 +274,7 @@ jobs:
 
   verify-install:
     name: Verify Homebrew install on ${{ matrix.architecture }}
-    needs: publish
+    needs: [prepare, publish]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -232,6 +288,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.source_commit }}
           persist-credentials: false
 
       - name: Install from public tap and verify behavior

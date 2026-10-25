@@ -44,7 +44,15 @@ do not migrate automatically; uninstall that formula before installing
 
 ## Maintainer releases
 
-Push a `vMAJOR.MINOR.PATCH` tag to build and smoke-test native arm64 and x86_64
+To release from GitHub, open **Actions > Release Homebrew formula > Run
+workflow**, select **main**, enter a version such as `1.1.0` (without `v`),
+and run the workflow. It tags the latest commit on `main` and continues
+publication in the same run. An existing tag is rejected rather than moved.
+If a release fails after its tag is created, rerun the failed workflow jobs
+instead of submitting the same version again.
+
+Alternatively, push a `vMAJOR.MINOR.PATCH` tag. Both entry points build and
+smoke-test native arm64 and x86_64
 executables, publish both archives and their `SHA256SUMS` file as a public
 release in `Thames1990/homebrew-tap`, update its formula, and verify Homebrew
 installation on both architectures. Pull requests and branch pushes run
