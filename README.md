@@ -143,6 +143,22 @@ startup with a diagnostic on stderr, even if CLI overrides were supplied or
 the invocation is `--clear`. Syntax errors identify the file, line, and
 column; setting errors identify the file and setting.
 
+The running HUD rereads its configuration on its 150 ms refresh cycle. Valid
+edits replace the entire active configuration together, updating appearance,
+placement, and display selection without a restart. Omitted settings revert
+to built-in defaults rather than inheriting an earlier edit. Invalid live
+edits (including unreadable files) apply nothing: the HUD keeps its last
+known-good settings and reports the file/setting diagnostic through macOS
+unified logging. Repeated identical diagnostics are suppressed until the error
+changes or a valid configuration is loaded again. Deleting the file restores
+built-in defaults; recreating it resumes live configuration.
+
+Notice defaults apply to new CLI invocations, with explicit flags still taking
+precedence. Reloading never changes existing Notice content or expiration,
+replaces a Notice, or clears one. The HUD keeps the config path selected by
+its startup environment; changing `XDG_CONFIG_HOME` for a later CLI invocation
+does not redirect an already-running HUD.
+
 ### Panel appearance
 
 The built-in design uses adaptive macOS material, semantic system text colors,

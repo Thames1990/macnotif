@@ -109,16 +109,16 @@ enum CLIError: Error, CustomStringConvertible {
     }
 }
 
-let configuration: NoticeConfiguration
+let startupConfiguration: NoticeConfiguration
 do {
-    configuration = try NoticeConfiguration.load()
+    startupConfiguration = try NoticeConfiguration.load()
 } catch {
     fputs("\(error)\n", stderr)
     exit(EXIT_FAILURE)
 }
 
 if CommandLine.arguments.count > 1 {
-    do { try runCommandLine(configuration: configuration) }
+    do { try runCommandLine(configuration: startupConfiguration) }
     catch {
         fputs("\(error)\n", stderr)
         exit(EXIT_FAILURE)
@@ -257,6 +257,8 @@ final class NoticeBar: NSVisualEffectView {
 
 final class HUDApplication: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
+    private var configuration = startupConfiguration
+    private var lastConfigurationError: String?
     private var panel: NSPanel!
     private var permanentBar: NoticeBar!
     private var temporaryBar: NoticeBar!
@@ -412,6 +414,16 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     }
 
     private func refresh() {
+        do {
+            configuration = try NoticeConfiguration.load()
+            lastConfigurationError = nil
+        } catch {
+            let diagnostic = String(describing: error)
+            if diagnostic != lastConfigurationError {
+                logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
+                lastConfigurationError = diagnostic
+            }
+        }
         let permanent = readMessage(at: permanentURL)
         let storedTemporary = readMessage(at: temporaryURL)
         let temporary = storedTemporary.flatMap { message -> HUDMessage? in

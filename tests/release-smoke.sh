@@ -276,6 +276,161 @@ guard found else {
     exit(1)
 }
 SWIFT
+
+# Keep the same HUD and Notice while replacing configuration on disk.
+"$binary" --title "Live configuration" --mode permanent
+log stream --style compact --level debug \
+    --predicate 'subsystem == "com.mohrworks.macnotif" AND (eventMessage CONTAINS "configuration" OR eventMessage CONTAINS "Configured display")' \
+    >"$test_home/reload-log" 2>&1 &
+log_stream_pid=$!
+sleep 0.5
+swift - "$config_file" "$binary" "$permanent_file" "$temporary_file" $appearance_pids <<'SWIFT'
+import AppKit
+import CoreGraphics
+import Foundation
+
+let configURL = URL(fileURLWithPath: CommandLine.arguments[1])
+let binaryURL = URL(fileURLWithPath: CommandLine.arguments[2])
+let permanentURL = URL(fileURLWithPath: CommandLine.arguments[3])
+let temporaryURL = URL(fileURLWithPath: CommandLine.arguments[4])
+let pids = Set(CommandLine.arguments.dropFirst(5).compactMap(Int32.init))
+
+func invoke(_ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = binaryURL
+    process.arguments = arguments
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        fatalError("CLI invocation failed: \(arguments)")
+    }
+}
+
+func expectNotice(at url: URL, title: String, duration: Double?) throws {
+    let message = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+    guard message?["title"] as? String == title,
+          message?["duration"] as? Double == duration else {
+        fatalError("Notice defaults were not applied: \(String(describing: message))")
+    }
+}
+
+func expectPanel(width expectedWidth: Double, anchor: String, horizontal: Double, vertical: Double) {
+    guard let screen = NSScreen.screens.first else {
+        fatalError("Live configuration smoke test requires a display")
+    }
+    let visible = screen.visibleFrame
+    let desktopTop = screen.frame.maxY
+    for _ in 0..<100 {
+        let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], 0)
+            as? [[String: Any]] ?? []
+        for window in windows {
+            guard let pid = window[kCGWindowOwnerPID as String] as? Int32,
+                  pids.contains(pid),
+                  let bounds = window[kCGWindowBounds as String] as? [String: Any],
+                  let width = bounds["Width"] as? Double,
+                  let height = bounds["Height"] as? Double,
+                  let x = bounds["X"] as? Double,
+                  let y = bounds["Y"] as? Double else { continue }
+            let expectedX = anchor.hasSuffix("left")
+                ? visible.minX + horizontal : visible.maxX - width - horizontal
+            let expectedY = anchor.hasPrefix("top")
+                ? desktopTop - visible.maxY + vertical
+                : desktopTop - visible.minY - height - vertical
+            if abs(width - expectedWidth) < 1 && abs(x - expectedX) < 1 && abs(y - expectedY) < 1 {
+                return
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    }
+    fputs("Running HUD did not apply width \(expectedWidth) and \(anchor) insets \(horizontal), \(vertical)\n", stderr)
+    exit(1)
+}
+
+try """
+[appearance]
+width = 432
+[display]
+id = 4000000001
+[layout]
+anchor = "bottom-left"
+horizontal_inset = 41
+vertical_inset = 53
+[notice]
+mode = "permanent"
+duration = 7
+""".write(to: configURL, atomically: true, encoding: .utf8)
+expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+try invoke(["--title", "Reloaded Notice defaults"])
+try expectNotice(at: permanentURL, title: "Reloaded Notice defaults", duration: nil)
+try invoke(["--title", "Reloaded duration", "--mode", "temporary"])
+try expectNotice(at: temporaryURL, title: "Reloaded duration", duration: 7)
+try invoke(["--title", "Explicit live duration", "--mode", "temporary", "--duration", "30"])
+try expectNotice(at: temporaryURL, title: "Explicit live duration", duration: 30)
+let permanent = try Data(contentsOf: permanentURL)
+let temporary = try Data(contentsOf: temporaryURL)
+
+// Valid appearance fields must not leak out of an otherwise invalid replacement.
+for invalid in [
+    """
+    [appearance]
+    width = 580
+    [notice]
+    duration = -1
+    [display]
+    id = 4000000002
+    [layout]
+    anchor = "top-left"
+    horizontal_inset = 200
+    """,
+    "[appearance]\nwidth = 580\nunknown = true",
+    "[appearance\nwidth = 580"
+] {
+    try invalid.write(to: configURL, atomically: true, encoding: .utf8)
+    Thread.sleep(forTimeInterval: 0.6)
+    expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+}
+try Data([0xff]).write(to: configURL, options: .atomic)
+Thread.sleep(forTimeInterval: 0.6)
+expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+
+try FileManager.default.removeItem(at: configURL)
+expectPanel(width: 360, anchor: "top-right", horizontal: 18, vertical: 18)
+guard try Data(contentsOf: permanentURL) == permanent,
+      try Data(contentsOf: temporaryURL) == temporary else {
+    fatalError("Reloading configuration changed existing Notice content or lifecycle")
+}
+try invoke(["--title", "Deleted config defaults"])
+try expectNotice(at: temporaryURL, title: "Deleted config defaults", duration: 1)
+
+// Recreating the file after deletion must work, and omitted keys use defaults.
+try """
+[appearance]
+width = 468
+[display]
+id = 4000000002
+[layout]
+anchor = "top-left"
+""".write(to: configURL, atomically: true, encoding: .utf8)
+expectPanel(width: 468, anchor: "top-left", horizontal: 18, vertical: 18)
+try invoke(["--title", "Partial replacement defaults"])
+try expectNotice(at: temporaryURL, title: "Partial replacement defaults", duration: 1)
+SWIFT
+for attempt in {1..50}; do
+    if grep -Fq 'Configured display 4000000002 is unavailable' "$test_home/reload-log"; then
+        break
+    fi
+    sleep 0.1
+done
+grep -Fq 'Configured display 4000000001 is unavailable; using the main display' "$test_home/reload-log"
+grep -Fq 'Configured display 4000000002 is unavailable; using the main display' "$test_home/reload-log"
+grep -Fq "keeping last known-good settings: macnotif: $config_file: notice.duration must be" "$test_home/reload-log"
+grep -Fq "keeping last known-good settings: macnotif: $config_file: unknown setting appearance.unknown" "$test_home/reload-log"
+grep -Fq "keeping last known-good settings: macnotif: $config_file:1:" "$test_home/reload-log"
+test "$(grep -Fc 'notice.duration must be' "$test_home/reload-log")" = 1
+kill "$log_stream_pid"
+wait "$log_stream_pid" 2>/dev/null || true
+log_stream_pid=""
+"$binary" --clear
 rm "$config_file"
 
 # Missing HOME config, empty files, and empty tables all keep built-in defaults.
