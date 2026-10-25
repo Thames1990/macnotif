@@ -6,6 +6,13 @@ struct ConfigurationError: Error, CustomStringConvertible {
     let description: String
 }
 
+private func finiteNumber(_ value: (any TOMLValueConvertible)?) -> Double? {
+    guard let number = value?.double ?? value?.int.map(Double.init), number.isFinite else {
+        return nil
+    }
+    return number
+}
+
 struct AppearanceColors {
     var background: String?
     var title: String?
@@ -53,8 +60,7 @@ struct AppearanceConfiguration {
         let otherKeys = ["shadow", "permanent_symbol", "temporary_symbol", "animation_duration", "light", "dark"]
         for key in table.keys.sorted() {
             if let (path, range) = numeric[key] {
-                let number = table[key]?.double ?? table[key]?.int.map(Double.init)
-                guard let number, number.isFinite, range.contains(number) else {
+                guard let number = finiteNumber(table[key]), range.contains(number) else {
                     throw ConfigurationError(description: "appearance.\(key) must be a finite number in \(range)")
                 }
                 self[keyPath: path] = CGFloat(number)
@@ -81,8 +87,7 @@ struct AppearanceConfiguration {
             }
         }
         if let value = table["animation_duration"] {
-            let number = value.double ?? value.int.map(Double.init)
-            guard let number, number.isFinite, (0...2).contains(number) else {
+            guard let number = finiteNumber(value), (0...2).contains(number) else {
                 throw ConfigurationError(description: "appearance.animation_duration must be a finite number in 0...2 seconds")
             }
             animationDuration = number
@@ -174,8 +179,7 @@ struct NoticeConfiguration {
                     configuration.mode = mode
                 }
                 if let value = notice["duration"] {
-                    let duration = value.double ?? value.int.map(TimeInterval.init)
-                    guard let duration, duration.isFinite, duration > 0 else {
+                    guard let duration = finiteNumber(value), duration > 0 else {
                         throw ConfigurationError(
                             description: "macnotif: \(url.path): notice.duration must be a finite positive number of seconds"
                         )
@@ -218,8 +222,7 @@ struct NoticeConfiguration {
                 }
                 for key in ["horizontal_inset", "vertical_inset"] {
                     if let value = layout[key] {
-                        let inset = value.double ?? value.int.map(Double.init)
-                        guard let inset, inset.isFinite, inset >= 0 else {
+                        guard let inset = finiteNumber(value), inset >= 0 else {
                             throw ConfigurationError(
                                 description: "macnotif: \(url.path): layout.\(key) must be a finite non-negative number of points"
                             )
