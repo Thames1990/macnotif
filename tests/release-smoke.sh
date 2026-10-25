@@ -244,30 +244,29 @@ grep -Fq '"description":"Content is unchanged"' "$temporary_file"
 grep -Eq '"duration":30([,}])' "$temporary_file"
 test ! -e "$permanent_file"
 # Observe the public Window Server boundary, not private AppKit views.
-swift - "$binary" <<'SWIFT'
+appearance_pids=""
+for pid in $(hud_pids); do
+    case " $before_pids " in
+        *" $pid "*) continue ;;
+    esac
+    appearance_pids="$appearance_pids $pid"
+done
+swift - $appearance_pids <<'SWIFT'
 import CoreGraphics
 import Foundation
 
-let executable = CommandLine.arguments[1]
+let pids = Set(CommandLine.arguments.dropFirst().compactMap(Int32.init))
 var found = false
 for _ in 0..<30 {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], 0)
         as? [[String: Any]] ?? []
     for window in windows {
         guard let pid = window[kCGWindowOwnerPID as String] as? Int32,
+              pids.contains(pid),
               let bounds = window[kCGWindowBounds as String] as? [String: Any],
               let width = bounds["Width"] as? Double,
               let height = bounds["Height"] as? Double else { continue }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/ps")
-        process.arguments = ["-p", String(pid), "-o", "comm="]
-        let output = Pipe()
-        process.standardOutput = output
-        try process.run()
-        let command = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        process.waitUntilExit()
-        if command == executable && width == 384 && height >= 108 { found = true; break }
+        if width == 384 && height >= 108 { found = true; break }
     }
     if found { break }
     Thread.sleep(forTimeInterval: 0.05)
