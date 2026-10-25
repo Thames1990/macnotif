@@ -2,6 +2,9 @@
 
 MacNotif is a lightweight macOS HUD for temporary and permanent notices. It
 displays messages above other windows using macOS's adaptive HUD material.
+This is a custom panel, not a Notification Center banner: Notices do not appear
+in Notification Center history, integrate with Focus, or follow per-app
+notification delivery settings.
 
 ## Homebrew installation
 
@@ -60,11 +63,13 @@ or logged.
 ./build.sh
 ```
 
-This installer compiles `main.swift`, installs `~/Applications/MacNotif.app`
+This installer builds the Swift package, installs `~/Applications/MacNotif.app`
 and a `macnotif` command in `~/.local/bin`, and signs the app ad-hoc. It
 requires macOS Sequoia (15) or later and the Swift compiler supplied by Xcode
-or its Command Line Tools. Ensure `~/.local/bin` is on PATH if you want to use
-this installation by name.
+or its Command Line Tools. The first build downloads the pinned TOMLKit
+dependency using Swift Package Manager; the installed executable does not
+require SwiftPM or a separate TOML parser. Ensure `~/.local/bin` is on PATH if
+you want to use this installation by name.
 
 The installer leaves any previous `DinkyModeHUD.app`, `dinky-notify` command,
 and their saved state untouched. Remove those old files manually if you no
@@ -83,10 +88,9 @@ macnotif --clear
 ```
 
 Notices require `--title`. Optional flags are `--description`,
-`--mode temporary|permanent` (default: temporary), `--duration` in positive
-seconds (default: 1, temporary notices only), and `--border-color` as a six-
-or eight-digit RGB/RGBA hex color, optionally prefixed with `#`. Without a
-color override, the HUD uses the macOS accent color.
+`--mode temporary|permanent` (built-in default: temporary) and `--duration` in
+positive seconds (built-in default: 1, temporary notices only).
+`--border-color` is no longer supported.
 
 Temporary notices disappear after their duration. Permanent notices remain
 until replaced or cleared with `macnotif --clear`; clearing a permanent notice
@@ -97,3 +101,153 @@ Notice state is stored in `~/Library/Application Support/MacNotif/`. The HUD
 runs in the background and hides when neither bar has an active notice. Running
 the app executable without arguments starts the HUD rather than displaying CLI
 help.
+
+## Configuration
+
+MacNotif reads an optional TOML file from `~/.config/macnotif.toml`. When
+`XDG_CONFIG_HOME` is set, it reads `$XDG_CONFIG_HOME/macnotif.toml` instead;
+it does not also read the HOME config. MacNotif never creates a missing
+config file.
+
+```toml
+[notice]
+mode = "temporary" # "temporary" or "permanent"
+duration = 1       # finite positive number of seconds; integers or floats
+
+[display]
+# id = 69733248 # optional Core Graphics display ID; omitted uses the main display
+
+[layout]
+anchor = "top-right" # top-left, top-right, bottom-left, or bottom-right
+horizontal_inset = 18 # points
+vertical_inset = 18   # points
+```
+
+The file is partial: an empty file, an empty `[notice]` table, or omitted
+settings inherit the built-in defaults. For example, setting only
+`duration = 3.5` under `[notice]` keeps Temporary notice mode with a 3.5-second
+duration. Duration has no effect on Permanent notices.
+
+`[display].id` optionally selects a display by its Core Graphics display ID;
+omit it to use the main display. If that display is disconnected, the HUD uses
+the main display and emits a warning through macOS unified logging.
+`[layout].anchor` selects a corner, with top-right as the default.
+`horizontal_inset` and `vertical_inset` set the distance from that corner in
+points; both default to 18.
+
+Explicit `--mode` and `--duration` values override notice defaults for that
+invocation. Title, description, and clearing remain CLI operations, not
+configuration settings. Each invocation reads the file at startup. Invalid
+TOML, unknown settings or sections, invalid types, and unreadable files stop
+startup with a diagnostic on stderr, even if CLI overrides were supplied or
+the invocation is `--clear`. Syntax errors identify the file, line, and
+column; setting errors identify the file and setting.
+
+The running HUD rereads its configuration on its 150 ms refresh cycle. Valid
+edits replace the entire active configuration together, updating appearance,
+placement, and display selection without a restart. Omitted settings revert
+to built-in defaults rather than inheriting an earlier edit. Invalid live
+edits (including unreadable files) apply nothing: the HUD keeps its last
+known-good settings and reports the file/setting diagnostic through macOS
+unified logging. Repeated identical diagnostics are suppressed until the error
+changes or a valid configuration is loaded again. Deleting the file restores
+built-in defaults; recreating it resumes live configuration.
+
+Notice defaults apply to new CLI invocations, with explicit flags still taking
+precedence. Reloading never changes existing Notice content or expiration,
+replaces a Notice, or clears one. The HUD keeps the config path selected by
+its startup environment; changing `XDG_CONFIG_HOME` for a later CLI invocation
+does not redirect an already-running HUD.
+
+### Panel appearance
+
+The built-in design uses adaptive macOS material, semantic system text colors,
+a subtle system shadow, and **no border**. It follows system light/dark
+appearance changes while the HUD is running; there is no forced-theme setting.
+Permanent notices remain above Temporary notices when both are visible.
+Appearance settings never change Notice content, replacement, expiration, or
+clearing behavior.
+
+All visual tokens live in TOML, not CLI flags. This example shows the built-in
+values; every field is optional:
+
+```toml
+[appearance]
+width = 360
+min_height = 54
+padding = 14
+icon_spacing = 12
+text_spacing = 2
+stack_spacing = 8
+title_size = 14
+detail_size = 13
+symbol_size = 16
+corner_radius = 14
+shadow = true
+permanent_symbol = "pin.fill"
+temporary_symbol = "bell.fill"
+animation_duration = 0.15
+border_width = 0
+```
+
+Dimensions, font sizes, and spacing are in points; animation duration is in
+seconds. `min_height` is a minimum, not a fixed height: bars grow to fit their
+text and vertical padding. Width also grows if necessary to accommodate
+padding, the symbol, icon spacing, and at least 96 points of text. Titles and
+details retain their single-line truncation behavior.
+
+| Token | Accepted values |
+| --- | --- |
+| `width` | 160-1200 |
+| `min_height` | 32-400 |
+| `padding`, `icon_spacing`, `stack_spacing` | 0-80 |
+| `text_spacing` | 0-40 |
+| `title_size`, `detail_size`, `symbol_size` | 8-96 |
+| `corner_radius` | 0-100 |
+| `border_width` | 0-10; zero disables the border |
+| `animation_duration` | 0-2; zero disables the brief Notice fade-in |
+| `shadow` | Boolean |
+| `permanent_symbol`, `temporary_symbol` | Valid SF Symbol names available on the running macOS version |
+
+Numeric tokens accept finite integers or floats. Invalid tokens are rejected
+with a file/setting diagnostic rather than silently ignored.
+
+#### Light and dark color overrides
+
+Omitted colors keep semantic system defaults. Override only the colors you
+want in each appearance; one appearance's overrides never leak into the other.
+For example, this deliberately replaces the material's default background
+and enables an optional border:
+
+```toml
+[appearance]
+border_width = 1
+
+[appearance.light]
+background = "#F5F5F5EE"
+title = "#202020"
+detail = "#404040"
+symbol = "#404040"
+border = "#808080"
+
+[appearance.dark]
+background = "#242424EE"
+title = "#FFFFFF"
+detail = "#DDDDDD"
+symbol = "#DDDDDD"
+border = "#909090"
+```
+
+Each color accepts `"#RRGGBB"` or `"#RRGGBBAA"` (sRGB, optional alpha). Without a
+custom border color, an enabled border uses the system separator color. A
+border color alone does not enable the border. Explicit colors may diverge
+from the native palette; choose legible foreground/background pairs.
+
+**Accessibility preferences are authoritative**, including changes while
+running. Reduce Motion disables Notice animations, including an animation
+already in progress. Increase Contrast replaces custom colors with opaque
+system background and primary text colors and enforces at least a one-point
+system-color outline. Reduce Transparency replaces custom/translucent
+backgrounds with the opaque system background. Text never shrinks below
+AppKit's preferred headline/body sizes, even when smaller sizes are configured;
+larger preferred text increases the bar height instead of clipping it.

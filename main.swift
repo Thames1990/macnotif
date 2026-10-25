@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import OSLog
 
 let home = FileManager.default.homeDirectoryForCurrentUser
 let supportURL = home.appendingPathComponent("Library/Application Support/MacNotif")
@@ -32,7 +33,7 @@ func color(from hex: String?) -> NSColor? {
     )
 }
 
-func runCommandLine() throws {
+func runCommandLine(configuration: NoticeConfiguration) throws {
     let args = Array(CommandLine.arguments.dropFirst())
     try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
     if args == ["--clear"] {
@@ -44,21 +45,20 @@ func runCommandLine() throws {
 
     var title: String?
     var messageDescription: String?
-    var mode = "temporary"
-    var borderColor: String?
-    var duration: TimeInterval = 1
+    var mode = configuration.mode
+    var duration = configuration.duration
     var index = 0
     while index < args.count {
         let option = args[index]
+        guard ["--title", "--description", "--mode", "--duration"].contains(option) else {
+            throw CLIError.unsupportedOption(option)
+        }
         guard index + 1 < args.count else { throw CLIError.usage }
         let value = args[index + 1]
         switch option {
         case "--title": title = value
         case "--description": messageDescription = value
         case "--mode": mode = value
-        case "--border-color":
-            guard color(from: value) != nil else { throw CLIError.invalidColor }
-            borderColor = value
         case "--duration":
             guard let parsed = TimeInterval(value), parsed.isFinite, parsed > 0 else {
                 throw CLIError.invalidDuration
@@ -76,7 +76,7 @@ func runCommandLine() throws {
         id: UUID().uuidString,
         title: title,
         description: messageDescription,
-        borderColor: borderColor,
+        borderColor: nil,
         createdAt: Date(),
         duration: mode == "temporary" ? duration : nil
     )
@@ -95,21 +95,30 @@ func runCommandLine() throws {
 }
 
 enum CLIError: Error, CustomStringConvertible {
-    case usage, missingTitle, invalidMode, invalidDuration, invalidColor, executableUnavailable
+    case usage, missingTitle, invalidMode, invalidDuration, executableUnavailable
+    case unsupportedOption(String)
     var description: String {
         switch self {
-        case .usage: return "Usage: macnotif --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | macnotif --clear"
+        case .usage: return "Usage: macnotif --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] | macnotif --clear"
+        case .unsupportedOption(let option): return "macnotif: unsupported option \(option)"
         case .missingTitle: return "macnotif: --title is required and must not be empty"
         case .invalidMode: return "macnotif: mode must be temporary or permanent"
         case .invalidDuration: return "macnotif: duration must be a positive number of seconds"
-        case .invalidColor: return "macnotif: border color must be a 6- or 8-digit hex color"
         case .executableUnavailable: return "macnotif: cannot locate the HUD executable"
         }
     }
 }
 
+let startupConfiguration: NoticeConfiguration
+do {
+    startupConfiguration = try NoticeConfiguration.load()
+} catch {
+    fputs("\(error)\n", stderr)
+    exit(EXIT_FAILURE)
+}
+
 if CommandLine.arguments.count > 1 {
-    do { try runCommandLine() }
+    do { try runCommandLine(configuration: startupConfiguration) }
     catch {
         fputs("\(error)\n", stderr)
         exit(EXIT_FAILURE)
@@ -117,18 +126,145 @@ if CommandLine.arguments.count > 1 {
     exit(EXIT_SUCCESS)
 }
 
+final class NoticeBar: NSVisualEffectView {
+    private let background = NSView()
+    private let title = NSTextField(labelWithString: "")
+    private let detail = NSTextField(labelWithString: "")
+    private let icon = NSImageView()
+    private let labels = NSStackView()
+    private var leading: NSLayoutConstraint!
+    private var trailing: NSLayoutConstraint!
+    private var iconGap: NSLayoutConstraint!
+    private var iconWidth: NSLayoutConstraint!
+    private var iconHeight: NSLayoutConstraint!
+    private var previousID: String?
+    private var currentSymbol: String?
+    private var tokens = AppearanceConfiguration()
+
+    init() {
+        super.init(frame: .zero)
+        material = .hudWindow
+        blendingMode = .behindWindow
+        state = .active
+        wantsLayer = true
+        layer?.masksToBounds = true
+        title.lineBreakMode = .byTruncatingTail
+        detail.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        detail.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        labels.addArrangedSubview(title)
+        labels.addArrangedSubview(detail)
+        labels.orientation = .vertical
+        labels.alignment = .leading
+        labels.detachesHiddenViews = true
+        background.wantsLayer = true
+        background.translatesAutoresizingMaskIntoConstraints = false
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        labels.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(background)
+        addSubview(icon)
+        addSubview(labels)
+        leading = icon.leadingAnchor.constraint(equalTo: leadingAnchor)
+        trailing = labels.trailingAnchor.constraint(equalTo: trailingAnchor)
+        iconGap = labels.leadingAnchor.constraint(equalTo: icon.trailingAnchor)
+        iconWidth = icon.widthAnchor.constraint(equalToConstant: 16)
+        iconHeight = icon.heightAnchor.constraint(equalToConstant: 16)
+        NSLayoutConstraint.activate([
+            leading, trailing, iconGap, iconWidth, iconHeight,
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+            background.topAnchor.constraint(equalTo: topAnchor),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
+            icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            labels.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColors()
+    }
+
+    func update(message: HUDMessage?, permanent: Bool, appearance: AppearanceConfiguration) -> CGFloat {
+        tokens = appearance
+        title.stringValue = message?.title ?? ""
+        detail.stringValue = message?.description ?? ""
+        detail.isHidden = message?.description?.isEmpty != false
+        let preferredTitle = NSFont.preferredFont(forTextStyle: .headline, options: [:])
+        let preferredDetail = NSFont.preferredFont(forTextStyle: .body, options: [:])
+        // A design token can enlarge text, never shrink the system's preferred size.
+        title.font = NSFontManager.shared.convert(
+            preferredTitle, toSize: max(appearance.titleSize, preferredTitle.pointSize)
+        )
+        detail.font = NSFontManager.shared.convert(
+            preferredDetail, toSize: max(appearance.detailSize, preferredDetail.pointSize)
+        )
+        let symbol = permanent ? appearance.permanentSymbol : appearance.temporarySymbol
+        if currentSymbol != symbol {
+            icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            currentSymbol = symbol
+        }
+        icon.symbolConfiguration = .init(pointSize: appearance.symbolSize, weight: .medium)
+        leading.constant = appearance.padding
+        trailing.constant = -appearance.padding
+        iconGap.constant = appearance.iconSpacing
+        iconWidth.constant = appearance.symbolSize
+        iconHeight.constant = appearance.symbolSize
+        labels.spacing = appearance.textSpacing
+        layer?.cornerRadius = appearance.cornerRadius
+        applyColors()
+
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            || appearance.animationDuration == 0 || message == nil {
+            layer?.removeAnimation(forKey: "noticeReveal")
+        } else if previousID != message?.id, appearance.animationDuration > 0 {
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = appearance.animationDuration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            layer?.add(fade, forKey: "noticeReveal")
+        }
+        previousID = message?.id
+        let textHeight = title.fittingSize.height
+            + (detail.isHidden ? 0 : detail.fittingSize.height + appearance.textSpacing)
+        return max(appearance.minHeight, max(appearance.symbolSize, textHeight) + 2 * appearance.padding)
+    }
+
+    private func applyColors() {
+        guard let layer else { return }
+        let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let opaque = contrast || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let colors = dark ? tokens.dark : tokens.light
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            title.textColor = contrast ? .labelColor : color(from: colors.title) ?? .labelColor
+            detail.textColor = contrast ? .labelColor : color(from: colors.detail) ?? .secondaryLabelColor
+            icon.contentTintColor = contrast ? .labelColor : color(from: colors.symbol) ?? .secondaryLabelColor
+            background.layer?.backgroundColor = opaque
+                ? NSColor.windowBackgroundColor.cgColor : color(from: colors.background)?.cgColor
+            layer.borderColor = contrast ? NSColor.labelColor.cgColor
+                : (color(from: colors.border) ?? .separatorColor).cgColor
+            layer.borderWidth = contrast ? max(1, tokens.borderWidth) : tokens.borderWidth
+            CATransaction.commit()
+        }
+    }
+}
+
 final class HUDApplication: NSObject, NSApplicationDelegate {
+    private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
+    private var configuration = startupConfiguration
+    private var lastConfigurationError: String?
     private var panel: NSPanel!
-    private var permanentBar: NSVisualEffectView!
-    private var temporaryBar: NSVisualEffectView!
-    private var permanentTitle: NSTextField!
-    private var temporaryTitle: NSTextField!
-    private var permanentDescription: NSTextField!
-    private var temporaryDescription: NSTextField!
-    private var permanentIcon: NSImageView!
-    private var temporaryIcon: NSImageView!
+    private var permanentBar: NoticeBar!
+    private var temporaryBar: NoticeBar!
     private var hudLockDescriptor: Int32?
     private var needsWindowRecovery = false
+    private var warnedUnavailableDisplayID: UInt32?
     private static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces, .stationary, .ignoresCycle
     ]
@@ -186,7 +322,8 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
 
     private func createPanel() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: configuration.appearance.width,
+                                height: configuration.appearance.minHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -194,16 +331,12 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         panel.level = .statusBar
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = configuration.appearance.shadow
         panel.hidesOnDeactivate = false
         panel.collectionBehavior = Self.collectionBehavior
 
-        (permanentBar, permanentTitle, permanentDescription, permanentIcon) = makeBar(
-            symbol: "circle.fill", titleSize: 15
-        )
-        (temporaryBar, temporaryTitle, temporaryDescription, temporaryIcon) = makeBar(
-            symbol: "arrow.triangle.2.circlepath", titleSize: 14
-        )
+        permanentBar = NoticeBar()
+        temporaryBar = NoticeBar()
         panel.contentView?.addSubview(permanentBar)
         panel.contentView?.addSubview(temporaryBar)
     }
@@ -223,6 +356,14 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             self, selector: #selector(systemDidChange(_:)),
             name: NSApplication.didChangeScreenParametersNotification, object: nil
         )
+        workspaceCenter.addObserver(
+            self, selector: #selector(accessibilityDidChange(_:)),
+            name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil
+        )
+    }
+
+    @objc private func accessibilityDidChange(_ notification: Notification) {
+        refresh()
     }
 
     @objc private func systemDidChange(_ notification: Notification) {
@@ -241,49 +382,26 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         refresh()
     }
 
-    private func makeBar(symbol: String, titleSize: CGFloat)
-        -> (NSVisualEffectView, NSTextField, NSTextField, NSImageView) {
-        let bar = NSVisualEffectView()
-        bar.material = .hudWindow
-        bar.blendingMode = .behindWindow
-        bar.state = .active
-        bar.wantsLayer = true
-        bar.layer?.cornerRadius = 15
-        bar.layer?.masksToBounds = true
-
-        let icon = NSImageView()
-        icon.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
-        icon.translatesAutoresizingMaskIntoConstraints = false
-        let title = NSTextField(labelWithString: "")
-        title.font = .systemFont(ofSize: titleSize, weight: .semibold)
-        title.lineBreakMode = .byTruncatingTail
-        let detail = NSTextField(labelWithString: "")
-        detail.font = .systemFont(ofSize: 12, weight: .regular)
-        detail.lineBreakMode = .byTruncatingTail
-        let labels = NSStackView(views: [title, detail])
-        labels.orientation = .vertical
-        labels.alignment = .leading
-        labels.spacing = 2
-        labels.detachesHiddenViews = true
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        bar.addSubview(icon)
-        bar.addSubview(labels)
-        NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: 18),
-            icon.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            icon.heightAnchor.constraint(equalToConstant: 16),
-            labels.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            labels.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            labels.trailingAnchor.constraint(lessThanOrEqualTo: bar.trailingAnchor, constant: -18)
-        ])
-        return (bar, title, detail, icon)
-    }
-
-    private func configuredBorderColor(_ override: String?) -> NSColor {
-        if let override, let color = color(from: override) { return color }
-        return .controlAccentColor
+    private func targetScreen() -> NSScreen? {
+        let screens = NSScreen.screens
+        let mainScreen = screens.first
+        guard let displayID = configuration.displayID else {
+            warnedUnavailableDisplayID = nil
+            return mainScreen
+        }
+        if let screen = screens.first(where: { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            else { return false }
+            return number.uint32Value == displayID
+        }) {
+            warnedUnavailableDisplayID = nil
+            return screen
+        }
+        if warnedUnavailableDisplayID != displayID {
+            logger.warning("Configured display \(displayID, privacy: .public) is unavailable; using the main display")
+            warnedUnavailableDisplayID = displayID
+        }
+        return mainScreen
     }
 
     private func readMessage(at url: URL) -> HUDMessage? {
@@ -295,21 +413,17 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func style(_ bar: NSVisualEffectView, title: NSTextField,
-                       detail: NSTextField, icon: NSImageView, message: HUDMessage?) {
-        guard let message else { return }
-        let tint = configuredBorderColor(message.borderColor)
-        title.stringValue = message.title
-        detail.stringValue = message.description ?? ""
-        detail.isHidden = message.description?.isEmpty != false
-        title.textColor = .labelColor
-        detail.textColor = .secondaryLabelColor
-        icon.contentTintColor = .secondaryLabelColor
-        bar.layer?.borderColor = tint.cgColor
-        bar.layer?.borderWidth = 1
-    }
-
     private func refresh() {
+        do {
+            configuration = try NoticeConfiguration.load()
+            lastConfigurationError = nil
+        } catch {
+            let diagnostic = String(describing: error)
+            if diagnostic != lastConfigurationError {
+                logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
+                lastConfigurationError = diagnostic
+            }
+        }
         let permanent = readMessage(at: permanentURL)
         let storedTemporary = readMessage(at: temporaryURL)
         let temporary = storedTemporary.flatMap { message -> HUDMessage? in
@@ -317,10 +431,10 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
                   Date().timeIntervalSince(message.createdAt) < duration else { return nil }
             return message
         }
-        style(permanentBar, title: permanentTitle, detail: permanentDescription,
-              icon: permanentIcon, message: permanent)
-        style(temporaryBar, title: temporaryTitle, detail: temporaryDescription,
-              icon: temporaryIcon, message: temporary)
+        let appearance = configuration.appearance
+        let permanentHeight = permanentBar.update(message: permanent, permanent: true, appearance: appearance)
+        let temporaryHeight = temporaryBar.update(message: temporary, permanent: false, appearance: appearance)
+        panel.hasShadow = appearance.shadow
         permanentBar.isHidden = permanent == nil
         temporaryBar.isHidden = temporary == nil
         guard permanent != nil || temporary != nil else {
@@ -328,16 +442,15 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             needsWindowRecovery = false
             return
         }
-        let permanentHeight: CGFloat = permanent?.description?.isEmpty == false ? 68 : 54
-        let temporaryHeight: CGFloat = temporary?.description?.isEmpty == false ? 62 : 50
         let bothVisible = permanent != nil && temporary != nil
-        let height = bothVisible ? permanentHeight + 8 + temporaryHeight
+        let height = bothVisible ? permanentHeight + appearance.stackSpacing + temporaryHeight
             : permanent != nil ? permanentHeight : temporaryHeight
-        panel.setContentSize(NSSize(width: 420, height: height))
-        permanentBar.frame = NSRect(x: 0, y: bothVisible ? temporaryHeight + 8 : 0,
-                                    width: 420, height: permanentHeight)
-        temporaryBar.frame = NSRect(x: 0, y: 0, width: 420, height: temporaryHeight)
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let width = max(appearance.width, 2 * appearance.padding + appearance.symbolSize + appearance.iconSpacing + 96)
+        panel.setContentSize(NSSize(width: width, height: height))
+        permanentBar.frame = NSRect(x: 0, y: bothVisible ? temporaryHeight + appearance.stackSpacing : 0,
+                                    width: width, height: permanentHeight)
+        temporaryBar.frame = NSRect(x: 0, y: 0, width: width, height: temporaryHeight)
+        guard let screen = targetScreen() else { return }
         if needsWindowRecovery || !panel.isVisible {
             panel.collectionBehavior = Self.collectionBehavior
             panel.level = .statusBar
@@ -347,8 +460,24 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             panel.orderOut(nil)
         }
         let visible = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
-                                     y: visible.maxY - panel.frame.height - 18))
+        let horizontalInset = CGFloat(configuration.layout.horizontalInset)
+        let verticalInset = CGFloat(configuration.layout.verticalInset)
+        let origin: NSPoint
+        switch configuration.layout.anchor {
+        case "top-left":
+            origin = NSPoint(x: visible.minX + horizontalInset,
+                             y: visible.maxY - panel.frame.height - verticalInset)
+        case "bottom-left":
+            origin = NSPoint(x: visible.minX + horizontalInset,
+                             y: visible.minY + verticalInset)
+        case "bottom-right":
+            origin = NSPoint(x: visible.maxX - panel.frame.width - horizontalInset,
+                             y: visible.minY + verticalInset)
+        default:
+            origin = NSPoint(x: visible.maxX - panel.frame.width - horizontalInset,
+                             y: visible.maxY - panel.frame.height - verticalInset)
+        }
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
     }
 }

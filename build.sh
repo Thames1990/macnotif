@@ -27,7 +27,7 @@ case "$architecture" in
         exit 1
         ;;
 esac
-swiftc -O -swift-version 5 -target "${architecture}-apple-macosx15.0" main.swift -o build/macnotif
+bash scripts/build-release.sh "$architecture" build/macnotif
 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp build/macnotif "$APP_CLI"

@@ -27,4 +27,6 @@ if [[ "$output" != /* ]]; then
     output="$repo_root/$output"
 fi
 mkdir -p "$(dirname "$output")"
-swiftc -O -swift-version 5 -target "${architecture}-apple-macosx15.0" main.swift -o "$output"
+swift build -c release --product macnotif
+bin_dir=$(swift build -c release --show-bin-path)
+cp "$bin_dir/macnotif" "$output"
