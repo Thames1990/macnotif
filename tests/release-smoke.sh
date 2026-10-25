@@ -7,6 +7,7 @@ process_name=$(basename "$binary")
 test_home=$(mktemp -d)
 new_hud_pids=""
 before_pids=""
+log_stream_pid=""
 
 hud_pids() {
     local pid
@@ -18,6 +19,10 @@ hud_pids() {
 }
 
 cleanup() {
+    if [[ -n "$log_stream_pid" ]]; then
+        kill "$log_stream_pid" 2>/dev/null || true
+        wait "$log_stream_pid" 2>/dev/null || true
+    fi
     for pid in $(hud_pids); do
         case " $before_pids " in
             *" $pid "*) continue ;;
@@ -74,12 +79,57 @@ for value in 0 -1 inf nan '"2"' true '[]' '{}'; do
     expect_config_error "[notice]
 duration = $value" 'notice.duration must be a finite positive number of seconds'
 done
+expect_config_error '[display]
+unknown = true' 'unknown setting display.unknown'
+expect_config_error 'display = false' 'display must be a table'
+expect_config_error '[display]
+id = 0' 'display.id must be a positive 32-bit display ID'
+expect_config_error '[display]
+id = 4294967296' 'display.id must be a positive 32-bit display ID'
+expect_config_error '[layout]
+anchor = "center"' 'layout.anchor must be "top-left", "top-right", "bottom-left", or "bottom-right"'
+expect_config_error '[layout]
+horizontal_inset = -1' 'layout.horizontal_inset must be a finite non-negative number of points'
+expect_config_error '[layout]
+vertical_inset = true' 'layout.vertical_inset must be a finite non-negative number of points'
 expect_config_error '[notice
 mode = "permanent"' ':1:'
 expect_config_error '[notice]
 mode = "temporary"
 mode = "permanent"' ':3:'
 
+# An unavailable configured display keeps the running HUD available and warns
+# through macOS unified logging.
+printf '[display]\nid = 4000000000\n' > "$config_file"
+log stream --style compact --level warning \
+    --predicate 'subsystem == "com.mohrworks.macnotif" AND eventMessage CONTAINS "Configured display"' \
+    >"$test_home/unified-log" 2>&1 &
+log_stream_pid=$!
+sleep 0.5
+"$binary" --title "Unavailable display fallback" --duration 30
+for attempt in {1..50}; do
+    if grep -Fq 'Configured display 4000000000 is unavailable; using the main display' "$test_home/unified-log"; then
+        break
+    fi
+    sleep 0.1
+done
+if ! grep -Fq 'Configured display 4000000000 is unavailable; using the main display' "$test_home/unified-log"; then
+    echo "macnotif did not warn when the configured display was unavailable" >&2
+    exit 1
+fi
+kill "$log_stream_pid"
+wait "$log_stream_pid" 2>/dev/null || true
+log_stream_pid=""
+for pid in $(hud_pids); do
+    case " $before_pids " in
+        *" $pid "*) continue ;;
+    esac
+    kill "$pid"
+    wait "$pid" 2>/dev/null || true
+done
+rm -rf "$state_dir"
+
+printf '[notice]\nmode = "temporary"\nmode = "permanent"\n' > "$config_file"
 if "$binary" --clear >"$test_home/stdout" 2>"$test_home/stderr"; then
     echo "macnotif --clear ignored invalid startup configuration" >&2
     exit 1
@@ -139,6 +189,20 @@ for contents in missing '' '[notice]'; do
         rm "$config_file"
     fi
 done
+
+cat > "$config_file" <<'EOF'
+[display]
+id = 4000000000
+
+[layout]
+anchor = "bottom-left"
+horizontal_inset = 24
+vertical_inset = 32
+EOF
+"$binary" --title "Configured placement"
+grep -Fq '"title":"Configured placement"' "$temporary_file"
+grep -Eq '"duration":1([,}])' "$temporary_file"
+rm "$config_file"
 
 printf '[notice]\nmode = "permanent"\n' > "$test_home/.config/macnotif.toml"
 "$binary" --title "Persistent notice"

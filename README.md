@@ -110,6 +110,14 @@ config file.
 [notice]
 mode = "temporary" # "temporary" or "permanent"
 duration = 1       # finite positive number of seconds; integers or floats
+
+[display]
+# id = 69733248 # optional Core Graphics display ID; omitted uses the main display
+
+[layout]
+anchor = "top-right" # top-left, top-right, bottom-left, or bottom-right
+horizontal_inset = 18 # points
+vertical_inset = 18   # points
 ```
 
 The file is partial: an empty file, an empty `[notice]` table, or omitted
@@ -117,11 +125,17 @@ settings inherit the built-in defaults. For example, setting only
 `duration = 3.5` under `[notice]` keeps Temporary notice mode with a 3.5-second
 duration. Duration has no effect on Permanent notices.
 
-Explicit `--mode` and `--duration` values override these defaults for that
+`[display].id` optionally selects a display by its Core Graphics display ID;
+omit it to use the main display. If that display is disconnected, the HUD uses
+the main display and emits a warning through macOS unified logging.
+`[layout].anchor` selects a corner, with top-right as the default.
+`horizontal_inset` and `vertical_inset` set the distance from that corner in
+points; both default to 18.
+
+Explicit `--mode` and `--duration` values override notice defaults for that
 invocation. Title, description, and clearing remain CLI operations, not
 configuration settings. Each invocation reads the file at startup. Invalid
 TOML, unknown settings or sections, invalid types, and unreadable files stop
 startup with a diagnostic on stderr, even if CLI overrides were supplied or
 the invocation is `--clear`. Syntax errors identify the file, line, and
-column; setting errors identify the file and setting. Currently only the
-`[notice]` settings above are supported.
+column; setting errors identify the file and setting.
