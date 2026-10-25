@@ -114,10 +114,18 @@ struct AppearanceConfiguration {
     }
 }
 
+struct LayoutConfiguration {
+    var anchor = "top-right"
+    var horizontalInset: Double = 18
+    var verticalInset: Double = 18
+}
+
 struct NoticeConfiguration {
     var mode = "temporary"
     var duration: TimeInterval = 1
     var appearance = AppearanceConfiguration()
+    var displayID: UInt32?
+    var layout = LayoutConfiguration()
 
     static func load() throws -> NoticeConfiguration {
         let directory = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
@@ -136,7 +144,8 @@ struct NoticeConfiguration {
         do {
             let table = try TOMLTable(string: source)
             var configuration = NoticeConfiguration()
-            for key in table.keys.sorted() where key != "notice" && key != "appearance" {
+            for key in table.keys.sorted()
+                where key != "notice" && key != "appearance" && key != "display" && key != "layout" {
                 throw ConfigurationError(description: "macnotif: \(url.path): unknown setting \(key)")
             }
             if let value = table["appearance"] {
@@ -172,6 +181,55 @@ struct NoticeConfiguration {
                         )
                     }
                     configuration.duration = duration
+                }
+            }
+            if let value = table["display"] {
+                guard let display = value.table else {
+                    throw ConfigurationError(description: "macnotif: \(url.path): display must be a table")
+                }
+                for key in display.keys.sorted() where key != "id" {
+                    throw ConfigurationError(description: "macnotif: \(url.path): unknown setting display.\(key)")
+                }
+                if let value = display["id"] {
+                    guard let id = value.int, id > 0, id <= Int64(UInt32.max) else {
+                        throw ConfigurationError(
+                            description: "macnotif: \(url.path): display.id must be a positive 32-bit display ID"
+                        )
+                    }
+                    configuration.displayID = UInt32(id)
+                }
+            }
+            if let value = table["layout"] {
+                guard let layout = value.table else {
+                    throw ConfigurationError(description: "macnotif: \(url.path): layout must be a table")
+                }
+                for key in layout.keys.sorted()
+                    where key != "anchor" && key != "horizontal_inset" && key != "vertical_inset" {
+                    throw ConfigurationError(description: "macnotif: \(url.path): unknown setting layout.\(key)")
+                }
+                if let value = layout["anchor"] {
+                    let allowedAnchors = ["top-left", "top-right", "bottom-left", "bottom-right"]
+                    guard let anchor = value.string, allowedAnchors.contains(anchor) else {
+                        throw ConfigurationError(
+                            description: "macnotif: \(url.path): layout.anchor must be \"top-left\", \"top-right\", \"bottom-left\", or \"bottom-right\""
+                        )
+                    }
+                    configuration.layout.anchor = anchor
+                }
+                for key in ["horizontal_inset", "vertical_inset"] {
+                    if let value = layout[key] {
+                        let inset = value.double ?? value.int.map(Double.init)
+                        guard let inset, inset.isFinite, inset >= 0 else {
+                            throw ConfigurationError(
+                                description: "macnotif: \(url.path): layout.\(key) must be a finite non-negative number of points"
+                            )
+                        }
+                        if key == "horizontal_inset" {
+                            configuration.layout.horizontalInset = inset
+                        } else {
+                            configuration.layout.verticalInset = inset
+                        }
+                    }
                 }
             }
             return configuration

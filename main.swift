@@ -1,6 +1,7 @@
 import AppKit
 import Darwin
 import Foundation
+import OSLog
 
 let home = FileManager.default.homeDirectoryForCurrentUser
 let supportURL = home.appendingPathComponent("Library/Application Support/MacNotif")
@@ -126,6 +127,7 @@ if CommandLine.arguments.count > 1 {
 }
 
 final class NoticeBar: NSVisualEffectView {
+    private let background = NSView()
     private let title = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let icon = NSImageView()
@@ -155,8 +157,11 @@ final class NoticeBar: NSVisualEffectView {
         labels.orientation = .vertical
         labels.alignment = .leading
         labels.detachesHiddenViews = true
+        background.wantsLayer = true
+        background.translatesAutoresizingMaskIntoConstraints = false
         icon.translatesAutoresizingMaskIntoConstraints = false
         labels.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(background)
         addSubview(icon)
         addSubview(labels)
         leading = icon.leadingAnchor.constraint(equalTo: leadingAnchor)
@@ -166,6 +171,10 @@ final class NoticeBar: NSVisualEffectView {
         iconHeight = icon.heightAnchor.constraint(equalToConstant: 16)
         NSLayoutConstraint.activate([
             leading, trailing, iconGap, iconWidth, iconHeight,
+            background.leadingAnchor.constraint(equalTo: leadingAnchor),
+            background.trailingAnchor.constraint(equalTo: trailingAnchor),
+            background.topAnchor.constraint(equalTo: topAnchor),
+            background.bottomAnchor.constraint(equalTo: bottomAnchor),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),
             labels.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
@@ -207,7 +216,8 @@ final class NoticeBar: NSVisualEffectView {
         layer?.cornerRadius = appearance.cornerRadius
         applyColors()
 
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || message == nil {
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            || appearance.animationDuration == 0 || message == nil {
             layer?.removeAnimation(forKey: "noticeReveal")
         } else if previousID != message?.id, appearance.animationDuration > 0 {
             let fade = CABasicAnimation(keyPath: "opacity")
@@ -235,7 +245,8 @@ final class NoticeBar: NSVisualEffectView {
             title.textColor = contrast ? .labelColor : color(from: colors.title) ?? .labelColor
             detail.textColor = contrast ? .labelColor : color(from: colors.detail) ?? .secondaryLabelColor
             icon.contentTintColor = contrast ? .labelColor : color(from: colors.symbol) ?? .secondaryLabelColor
-            layer.backgroundColor = opaque ? NSColor.windowBackgroundColor.cgColor : color(from: colors.background)?.cgColor
+            background.layer?.backgroundColor = opaque
+                ? NSColor.windowBackgroundColor.cgColor : color(from: colors.background)?.cgColor
             layer.borderColor = contrast ? NSColor.labelColor.cgColor
                 : (color(from: colors.border) ?? .separatorColor).cgColor
             layer.borderWidth = contrast ? max(1, tokens.borderWidth) : tokens.borderWidth
@@ -245,11 +256,13 @@ final class NoticeBar: NSVisualEffectView {
 }
 
 final class HUDApplication: NSObject, NSApplicationDelegate {
+    private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
     private var panel: NSPanel!
     private var permanentBar: NoticeBar!
     private var temporaryBar: NoticeBar!
     private var hudLockDescriptor: Int32?
     private var needsWindowRecovery = false
+    private var warnedUnavailableDisplayID: UInt32?
     private static let collectionBehavior: NSWindow.CollectionBehavior = [
         .canJoinAllSpaces, .stationary, .ignoresCycle
     ]
@@ -367,6 +380,28 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         refresh()
     }
 
+    private func targetScreen() -> NSScreen? {
+        let screens = NSScreen.screens
+        let mainScreen = screens.first
+        guard let displayID = configuration.displayID else {
+            warnedUnavailableDisplayID = nil
+            return mainScreen
+        }
+        if let screen = screens.first(where: { screen in
+            guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+            else { return false }
+            return number.uint32Value == displayID
+        }) {
+            warnedUnavailableDisplayID = nil
+            return screen
+        }
+        if warnedUnavailableDisplayID != displayID {
+            logger.warning("Configured display \(displayID, privacy: .public) is unavailable; using the main display")
+            warnedUnavailableDisplayID = displayID
+        }
+        return mainScreen
+    }
+
     private func readMessage(at url: URL) -> HUDMessage? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         do { return try JSONDecoder().decode(HUDMessage.self, from: Data(contentsOf: url)) }
@@ -403,7 +438,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         permanentBar.frame = NSRect(x: 0, y: bothVisible ? temporaryHeight + appearance.stackSpacing : 0,
                                     width: width, height: permanentHeight)
         temporaryBar.frame = NSRect(x: 0, y: 0, width: width, height: temporaryHeight)
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        guard let screen = targetScreen() else { return }
         if needsWindowRecovery || !panel.isVisible {
             panel.collectionBehavior = Self.collectionBehavior
             panel.level = .statusBar
@@ -413,8 +448,24 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
             panel.orderOut(nil)
         }
         let visible = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: visible.midX - panel.frame.width / 2,
-                                     y: visible.maxY - panel.frame.height - 18))
+        let horizontalInset = CGFloat(configuration.layout.horizontalInset)
+        let verticalInset = CGFloat(configuration.layout.verticalInset)
+        let origin: NSPoint
+        switch configuration.layout.anchor {
+        case "top-left":
+            origin = NSPoint(x: visible.minX + horizontalInset,
+                             y: visible.maxY - panel.frame.height - verticalInset)
+        case "bottom-left":
+            origin = NSPoint(x: visible.minX + horizontalInset,
+                             y: visible.minY + verticalInset)
+        case "bottom-right":
+            origin = NSPoint(x: visible.maxX - panel.frame.width - horizontalInset,
+                             y: visible.minY + verticalInset)
+        default:
+            origin = NSPoint(x: visible.maxX - panel.frame.width - horizontalInset,
+                             y: visible.maxY - panel.frame.height - verticalInset)
+        }
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
     }
 }
