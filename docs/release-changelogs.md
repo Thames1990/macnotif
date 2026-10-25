@@ -1,6 +1,8 @@
 # Release changelog design
 
-Status: agreed design; not yet implemented.
+Status: curated history and contributor/agent guidance are implemented.
+Automatic finalization, publication, and historical release-body updates
+remain planned.
 
 MacNotif will use curated `CHANGELOG.md` entries as the source of user-facing
 GitHub release notes. Version selection and release timing remain manual.
@@ -24,7 +26,8 @@ to change. Keep an empty `Unreleased` section above released versions, with
 newest versions first. Released headings use `VERSION - YYYY-MM-DD`, without
 the tag's `v` prefix.
 
-Document this convention for both human contributors and coding agents.
+The current [contributor guidance](../CONTRIBUTING.md) documents this convention
+for humans and is linked from `AGENTS.md` for coding agents.
 There is no per-PR CI requirement to modify the changelog. Starting a release
 is the maintainer's approval of the accumulated notes; there is no additional
 approval gate.
@@ -108,8 +111,9 @@ This design does not introduce automatic version bumps outside the manually
 requested release, automatic release scheduling, commit-derived summaries, an
 in-app updater, or a changelog requirement for maintenance-only PRs.
 
-Implementation must update the workflow, contributor/agent guidance, and
-README release procedure together. Verify section extraction, missing-note
-failures, finalization, retry behavior, and removal of pushed-tag publication.
-Historical release-body updates are part of implementation, not this
-documentation-only change.
+Contributor/agent guidance and the canonical changelog are available now.
+Update the README release procedure when the workflow replacement is
+implemented. Verify section extraction, missing-note failures, finalization,
+retry behavior, and removal of pushed-tag publication. Historical
+release-body updates remain a separate implementation step; the curated
+history does not itself change published releases.
