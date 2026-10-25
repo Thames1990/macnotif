@@ -1,8 +1,8 @@
 # Release changelog design
 
 Status: curated history, contributor/agent guidance, manual finalization,
-and source-bound release-note publication are implemented. Updating the
-two historical published release bodies remains a separate slice.
+source-bound release-note publication, and historical release-body
+synchronization are implemented.
 
 MacNotif uses curated `CHANGELOG.md` entries as the source of user-facing
 GitHub release notes. Version selection and release timing remain manual.
@@ -89,9 +89,9 @@ as absence of a release.
 ## Historical backfill
 
 Curated sections for the two existing releases are in `CHANGELOG.md`.
-Replacing their generic GitHub release bodies with the corresponding notes
-is separate from the release workflow implementation. This is a one-time,
-explicit update to release descriptions only: do not change tags or assets.
+Their GitHub release bodies were updated to match those sections without
+changing tags or assets. This was a one-time, explicit update to release
+descriptions only; future workflow runs do not rewrite historical releases.
 
 The dates below are the existing publication dates. Each boundary was checked
 against the release's `SOURCE_COMMIT` asset and matching source tag. There is
@@ -137,8 +137,8 @@ requested release, automatic release scheduling, commit-derived summaries, an
 in-app updater, or a changelog requirement for maintenance-only PRs.
 
 Contributor/agent guidance, the canonical changelog, the README procedure,
-and the workflow now describe the implemented behavior. Focused tests cover
-section extraction, missing-note failures, finalization, retry identity,
-publication conflicts, and dispatch-only wiring. Historical release-body
-updates remain separate; neither curated history nor a new dispatch rewrites
-those published releases.
+the workflow, and both historical release bodies now match the implemented
+behavior. Focused tests cover section extraction, missing-note failures,
+finalization, retry identity, publication conflicts, and dispatch-only wiring.
+Future dispatches publish only their selected release and do not rewrite
+historical release bodies.
