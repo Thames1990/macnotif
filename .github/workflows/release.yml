@@ -12,9 +12,6 @@ on:
           - patch
           - minor
           - major
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read
@@ -25,7 +22,7 @@ concurrency:
 
 jobs:
   prepare:
-    name: Resolve release source and tag
+    name: Finalize changelog and tag release source
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,7 +30,13 @@ jobs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       source_commit: ${{ steps.release.outputs.source_commit }}
     steps:
-      - name: Resolve release and create manual tag
+      - name: Check out dispatch source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Prepare release source
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -41,56 +44,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           SELECTED_REF: ${{ github.ref }}
           BUMP: ${{ inputs.bump }}
-          TAG_NAME: ${{ github.ref_name }}
           SOURCE_COMMIT: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          set -euo pipefail
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            if [[ "$SELECTED_REF" != "refs/heads/main" ]]; then
-              echo "Run manual releases from main." >&2
-              exit 1
-            fi
-            case "$BUMP" in
-              patch|minor|major) ;;
-              *)
-                echo "Version increment must be patch, minor, or major." >&2
-                exit 1
-                ;;
-            esac
-            latest_tag="$(gh api repos/Thames1990/homebrew-tap/releases/latest --jq .tag_name)"
-            if [[ ! "$latest_tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-              echo "Latest published release has an invalid version: $latest_tag" >&2
-              exit 1
-            fi
-            TAG_NAME="$(python3 - "$latest_tag" "$BUMP" <<'PY'
-          import sys
-          major, minor, patch = map(int, sys.argv[1][1:].split("."))
-          bump = sys.argv[2]
-          if bump == "major":
-              major, minor, patch = major + 1, 0, 0
-          elif bump == "minor":
-              minor, patch = minor + 1, 0
-          else:
-              patch += 1
-          print(f"v{major}.{minor}.{patch}")
-          PY
-            )"
-            echo "Releasing $TAG_NAME ($BUMP increment from $latest_tag)."
-            SOURCE_COMMIT="$(gh api 'repos/{owner}/{repo}/git/ref/heads/main' --jq .object.sha)"
-          fi
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ||
-                ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "Invalid release tag or source commit." >&2
-            exit 1
-          fi
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            gh api --method POST 'repos/{owner}/{repo}/git/refs' \
-              -f "ref=refs/tags/$TAG_NAME" -f "sha=$SOURCE_COMMIT" >/dev/null
-          fi
-          {
-            echo "tag_name=$TAG_NAME"
-            echo "source_commit=$SOURCE_COMMIT"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/release.py prepare \
+            --event "$EVENT_NAME" --ref "$SELECTED_REF" --bump "$BUMP" \
+            --source "$SOURCE_COMMIT" --run-id "$RUN_ID" --repository "$GH_REPO" \
+            --output "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.architecture }}
@@ -109,16 +69,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.source_commit }}
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate version tag
+      - name: Validate prepared source and notes
         env:
           TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
         run: |
-          if [[ ! "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tags must use vMAJOR.MINOR.PATCH, got: $TAG_NAME" >&2
-            exit 1
-          fi
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          python3 scripts/release.py notes --tag "$TAG_NAME" --source "$SOURCE_COMMIT" \
+            --output "$RUNNER_TEMP/release-notes.md"
 
       - name: Build native executable
         env:
@@ -158,6 +119,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.source_commit }}
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Download architecture builds
@@ -200,70 +162,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           TAG_NAME: ${{ steps.release.outputs.tag_name }}
-          VERSION: ${{ steps.release.outputs.version }}
           SOURCE_COMMIT: ${{ needs.prepare.outputs.source_commit }}
         run: |
-          if [[ -z "$GH_TOKEN" ]]; then
-            echo "Configure HOMEBREW_TAP_TOKEN with contents access to Thames1990/homebrew-tap." >&2
-            exit 1
-          fi
-          if [[ ! "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "The source commit SHA is invalid." >&2
-            exit 1
-          fi
-
-          arm64_name="macnotif-${VERSION}-arm64.tar.gz"
-          x86_64_name="macnotif-${VERSION}-x86_64.tar.gz"
-          if gh release view "$TAG_NAME" --repo Thames1990/homebrew-tap >/dev/null 2>&1; then
-            existing_release="$(mktemp -d)"
-            trap 'rm -rf "$existing_release"' EXIT
-            gh release download "$TAG_NAME" --repo Thames1990/homebrew-tap \
-              --pattern "$arm64_name" \
-              --pattern "$x86_64_name" \
-              --pattern SHA256SUMS \
-              --pattern SOURCE_COMMIT \
-              --dir "$existing_release"
-
-            if [[ "$(cat "$existing_release/SOURCE_COMMIT")" != "$SOURCE_COMMIT" ]]; then
-              echo "Release $TAG_NAME belongs to a different source commit; refusing to replace it." >&2
-              exit 1
-            fi
-            if [[ "$(wc -l < "$existing_release/SHA256SUMS" | tr -d ' ')" != "2" ]]; then
-              echo "Release $TAG_NAME has an invalid checksum manifest." >&2
-              exit 1
-            fi
-            (
-              cd "$existing_release"
-              sha256sum --check SHA256SUMS
-            )
-            arm64_sha256="$(awk -v name="$arm64_name" '$2 == name {print $1}' "$existing_release/SHA256SUMS")"
-            x86_64_sha256="$(awk -v name="$x86_64_name" '$2 == name {print $1}' "$existing_release/SHA256SUMS")"
-            if [[ ! "$arm64_sha256" =~ ^[0-9a-f]{64}$ || ! "$x86_64_sha256" =~ ^[0-9a-f]{64}$ ]]; then
-              echo "Release $TAG_NAME is missing architecture checksums." >&2
-              exit 1
-            fi
-            cp "$existing_release/$arm64_name" "dist/$arm64_name"
-            cp "$existing_release/$x86_64_name" "dist/$x86_64_name"
-            cp "$existing_release/SHA256SUMS" dist/SHA256SUMS
-            echo "Verified the existing release for source commit $SOURCE_COMMIT."
-          else
-            (
-              cd dist
-              sha256sum "$arm64_name" "$x86_64_name" > SHA256SUMS
-            )
-            printf '%s\n' "$SOURCE_COMMIT" > dist/SOURCE_COMMIT
-            gh release create "$TAG_NAME" dist/*.tar.gz dist/SHA256SUMS dist/SOURCE_COMMIT \
-              --repo Thames1990/homebrew-tap \
-              --title "MacNotif $VERSION" \
-              --notes "Unsigned native macOS executables for Apple Silicon and Intel. SHA-256 checksums are provided in SHA256SUMS and verified by the formula."
-          fi
-
-          arm64_sha256="$(awk -v name="$arm64_name" '$2 == name {print $1}' dist/SHA256SUMS)"
-          x86_64_sha256="$(awk -v name="$x86_64_name" '$2 == name {print $1}' dist/SHA256SUMS)"
-          {
-            echo "arm64_sha256=$arm64_sha256"
-            echo "x86_64_sha256=$x86_64_sha256"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/release.py publish --tag "$TAG_NAME" --source "$SOURCE_COMMIT" \
+            --dist dist --output "$GITHUB_OUTPUT"
 
       - name: Render formula from published checksums
         env:
