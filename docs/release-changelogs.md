@@ -1,17 +1,17 @@
 # Release changelog design
 
-Status: curated history and contributor/agent guidance are implemented.
-Automatic finalization, publication, and historical release-body updates
-remain planned.
+Status: curated history, contributor/agent guidance, manual finalization,
+and source-bound release-note publication are implemented. Updating the
+two historical published release bodies remains a separate slice.
 
-MacNotif will use curated `CHANGELOG.md` entries as the source of user-facing
+MacNotif uses curated `CHANGELOG.md` entries as the source of user-facing
 GitHub release notes. Version selection and release timing remain manual.
 This follows [Dinky's approach](https://github.com/mikker/Dinky/blob/main/scripts/release.sh):
 automate extraction and publication, not writing notes from commit messages.
 
-The current workflow still supports pushed tags, tags `main` without a
-changelog commit, and publishes a fixed release description. The changes below
-describe the intended replacement, not the currently available procedure.
+The manual workflow is the only publication entry point. It prepares an
+immutable source identity before either native build, and publishes the
+matching curated version section rather than a fixed release description.
 
 ## Authoring notes
 
@@ -36,7 +36,7 @@ approval gate.
 
 1. Run the release workflow manually on `main`, selecting patch, minor, or
    major. Keep the existing version calculation from the latest published
-   release in `Thames1990/homebrew-tap`. Remove the pushed-tag release trigger.
+   release in `Thames1990/homebrew-tap`. Pushed tags do not trigger publication.
 2. Validate the notes before creating a tag or publishing anything. A release
    must have meaningful `Unreleased` entries or an already-finalized section
    for its selected version. Missing notes stop the run with a clear
@@ -44,8 +44,9 @@ approval gate.
    release, explicitly write "No user-facing changes."
 3. For unfinalized notes, move the `Unreleased` entries into a dated version
    section and leave `Unreleased` empty. Commit only `CHANGELOG.md` to `main`,
-   then tag that exact commit. An already-finalized section is reused rather
-   than duplicated. Do not overwrite concurrent changes, move an existing
+   then tag that exact commit. The commit and annotated tag are pushed
+   atomically with ordinary fast-forward/ref-creation checks. An already-finalized
+   section is reused rather than duplicated. Do not overwrite concurrent changes, move an existing
    tag, or bypass branch protections; rejected writes stop the run explicitly.
 4. Build and smoke-test both native architectures using the tagged source.
    Publish the matching version section as the release body in
@@ -57,15 +58,39 @@ approval gate.
    release. Retries read notes from the tagged version section, not from
    newer `Unreleased` entries on `main`.
 
+`scripts/release.py` is the black-box release interface: `prepare` selects
+the version, finalizes notes, and writes `tag_name`/`source_commit` outputs;
+`notes` extracts the selected section from that commit after checking the
+tag identity; `publish` checks the same identity and publishes or verifies
+the tap release. `tests/release-preparation.sh` exercises it with temporary
+Git repositories, rejected/concurrent pushes, and controlled `gh` responses,
+including workflow wiring. Ordinary validation runs these tests alongside
+the existing formula and native checks, without a per-PR changelog gate.
+
+Preparation requires `main` to still match the dispatch commit. Its source
+write uses only the source workflow token, with no branch-protection bypass.
+The existing tap-only token remains confined to tap publication. The annotated
+tag records the repository, workflow run ID, dispatch source, and increment;
+if preparation is retried after the atomic push, it recovers this original
+identity before consulting the latest tap release. A different run cannot
+reuse that tag. Rejected writes do not publish either remote ref, while
+failed builds/publication do not roll back an already-prepared commit/tag.
+
 Preserve existing artifact and source-provenance verification when a release
 already exists. Retries must not silently replace conflicting artifacts or
 publish notes from a different source snapshot. Manually pushed tags no longer
 start a release; manual workflow dispatch is the only release entry point.
+Existing release bodies must match the selected section, and both archives
+must match the two-entry checksum manifest and `SOURCE_COMMIT`. These verified
+published bytes remain authoritative if a rebuild produces different archive
+bytes; retries never upload replacements. GitHub failures are not interpreted
+as absence of a release.
 
 ## Historical backfill
 
-Add curated sections for the two existing releases and replace their generic
-GitHub release bodies with the corresponding notes. This is a one-time,
+Curated sections for the two existing releases are in `CHANGELOG.md`.
+Replacing their generic GitHub release bodies with the corresponding notes
+is separate from the release workflow implementation. This is a one-time,
 explicit update to release descriptions only: do not change tags or assets.
 
 The dates below are the existing publication dates. Each boundary was checked
@@ -111,9 +136,9 @@ This design does not introduce automatic version bumps outside the manually
 requested release, automatic release scheduling, commit-derived summaries, an
 in-app updater, or a changelog requirement for maintenance-only PRs.
 
-Contributor/agent guidance and the canonical changelog are available now.
-Update the README release procedure when the workflow replacement is
-implemented. Verify section extraction, missing-note failures, finalization,
-retry behavior, and removal of pushed-tag publication. Historical
-release-body updates remain a separate implementation step; the curated
-history does not itself change published releases.
+Contributor/agent guidance, the canonical changelog, the README procedure,
+and the workflow now describe the implemented behavior. Focused tests cover
+section extraction, missing-note failures, finalization, retry identity,
+publication conflicts, and dispatch-only wiring. Historical release-body
+updates remain separate; neither curated history nor a new dispatch rewrites
+those published releases.

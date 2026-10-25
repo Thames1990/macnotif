@@ -41,3 +41,6 @@ jobs:
 
       - name: Test formula rendering
         run: bash tests/formula-template.sh
+
+      - name: Test release preparation and controlled publication
+        run: bash tests/release-preparation.sh
