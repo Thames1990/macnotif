@@ -37,16 +37,24 @@ brew uninstall macnotif
 The formula installs one unsigned executable, not an app bundle or shell
 launcher. It requires macOS Sequoia (15) or later.
 
-The Homebrew formula is published to `Thames1990/homebrew-tap` on the next
-tagged release. Existing installations of the previous `dinky-notify` formula
+The Homebrew formula is published in `Thames1990/homebrew-tap`.
+Existing installations of the previous `dinky-notify` formula
 do not migrate automatically; uninstall that formula before installing
 `macnotif`.
+
+## Changelog and contributions
+
+See [CHANGELOG.md](CHANGELOG.md) for the curated release history and
+[CONTRIBUTING.md](CONTRIBUTING.md) for guidance on recording upcoming
+user-facing changes under `Unreleased`.
 
 ## Maintainer releases
 
 The agreed [release changelog design](docs/release-changelogs.md) describes
-planned curated notes and automatic publication. It is not implemented yet;
-the procedure below describes the current workflow.
+planned automatic changelog finalization and release-note publication.
+Curated notes are maintained in `CHANGELOG.md`, but the workflow does not yet
+consume them; it still publishes a fixed release description. The procedure
+below describes the current workflow.
 
 To release from GitHub, open **Actions > Release Homebrew formula > Run
 workflow**, select **main**, choose **patch**, **minor**, or **major** (default:

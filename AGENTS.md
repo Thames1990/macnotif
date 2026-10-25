@@ -11,3 +11,8 @@ Use the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, 
 ### Domain docs
 
 Domain docs use a single-context layout. See `docs/agents/domain.md`.
+
+### Changelog
+
+For user-facing changes or release preparation, follow the curated changelog
+guidance in `CONTRIBUTING.md`, including when maintenance needs no entry.
