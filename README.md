@@ -60,11 +60,13 @@ or logged.
 ./build.sh
 ```
 
-This installer compiles `main.swift`, installs `~/Applications/MacNotif.app`
+This installer builds the Swift package, installs `~/Applications/MacNotif.app`
 and a `macnotif` command in `~/.local/bin`, and signs the app ad-hoc. It
 requires macOS Sequoia (15) or later and the Swift compiler supplied by Xcode
-or its Command Line Tools. Ensure `~/.local/bin` is on PATH if you want to use
-this installation by name.
+or its Command Line Tools. The first build downloads the pinned TOMLKit
+dependency using Swift Package Manager; the installed executable does not
+require SwiftPM or a separate TOML parser. Ensure `~/.local/bin` is on PATH if
+you want to use this installation by name.
 
 The installer leaves any previous `DinkyModeHUD.app`, `dinky-notify` command,
 and their saved state untouched. Remove those old files manually if you no
@@ -83,10 +85,9 @@ macnotif --clear
 ```
 
 Notices require `--title`. Optional flags are `--description`,
-`--mode temporary|permanent` (default: temporary), `--duration` in positive
-seconds (default: 1, temporary notices only), and `--border-color` as a six-
-or eight-digit RGB/RGBA hex color, optionally prefixed with `#`. Without a
-color override, the HUD uses the macOS accent color.
+`--mode temporary|permanent` (built-in default: temporary) and `--duration` in
+positive seconds (built-in default: 1, temporary notices only).
+`--border-color` is no longer supported.
 
 Temporary notices disappear after their duration. Permanent notices remain
 until replaced or cleared with `macnotif --clear`; clearing a permanent notice
@@ -97,3 +98,30 @@ Notice state is stored in `~/Library/Application Support/MacNotif/`. The HUD
 runs in the background and hides when neither bar has an active notice. Running
 the app executable without arguments starts the HUD rather than displaying CLI
 help.
+
+## Configuration
+
+MacNotif reads an optional TOML file from `~/.config/macnotif.toml`. When
+`XDG_CONFIG_HOME` is set, it reads `$XDG_CONFIG_HOME/macnotif.toml` instead;
+it does not also read the HOME config. MacNotif never creates a missing
+config file.
+
+```toml
+[notice]
+mode = "temporary" # "temporary" or "permanent"
+duration = 1       # finite positive number of seconds; integers or floats
+```
+
+The file is partial: an empty file, an empty `[notice]` table, or omitted
+settings inherit the built-in defaults. For example, setting only
+`duration = 3.5` under `[notice]` keeps Temporary notice mode with a 3.5-second
+duration. Duration has no effect on Permanent notices.
+
+Explicit `--mode` and `--duration` values override these defaults for that
+invocation. Title, description, and clearing remain CLI operations, not
+configuration settings. Each invocation reads the file at startup. Invalid
+TOML, unknown settings or sections, invalid types, and unreadable files stop
+startup with a diagnostic on stderr, even if CLI overrides were supplied or
+the invocation is `--clear`. Syntax errors identify the file, line, and
+column; setting errors identify the file and setting. Currently only the
+`[notice]` settings above are supported.

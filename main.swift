@@ -32,7 +32,7 @@ func color(from hex: String?) -> NSColor? {
     )
 }
 
-func runCommandLine() throws {
+func runCommandLine(configuration: NoticeConfiguration) throws {
     let args = Array(CommandLine.arguments.dropFirst())
     try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
     if args == ["--clear"] {
@@ -44,21 +44,20 @@ func runCommandLine() throws {
 
     var title: String?
     var messageDescription: String?
-    var mode = "temporary"
-    var borderColor: String?
-    var duration: TimeInterval = 1
+    var mode = configuration.mode
+    var duration = configuration.duration
     var index = 0
     while index < args.count {
         let option = args[index]
+        guard ["--title", "--description", "--mode", "--duration"].contains(option) else {
+            throw CLIError.unsupportedOption(option)
+        }
         guard index + 1 < args.count else { throw CLIError.usage }
         let value = args[index + 1]
         switch option {
         case "--title": title = value
         case "--description": messageDescription = value
         case "--mode": mode = value
-        case "--border-color":
-            guard color(from: value) != nil else { throw CLIError.invalidColor }
-            borderColor = value
         case "--duration":
             guard let parsed = TimeInterval(value), parsed.isFinite, parsed > 0 else {
                 throw CLIError.invalidDuration
@@ -76,7 +75,7 @@ func runCommandLine() throws {
         id: UUID().uuidString,
         title: title,
         description: messageDescription,
-        borderColor: borderColor,
+        borderColor: nil,
         createdAt: Date(),
         duration: mode == "temporary" ? duration : nil
     )
@@ -95,21 +94,30 @@ func runCommandLine() throws {
 }
 
 enum CLIError: Error, CustomStringConvertible {
-    case usage, missingTitle, invalidMode, invalidDuration, invalidColor, executableUnavailable
+    case usage, missingTitle, invalidMode, invalidDuration, executableUnavailable
+    case unsupportedOption(String)
     var description: String {
         switch self {
-        case .usage: return "Usage: macnotif --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] [--border-color HEX] | macnotif --clear"
+        case .usage: return "Usage: macnotif --title TEXT [--description TEXT] [--mode temporary|permanent] [--duration SECONDS] | macnotif --clear"
+        case .unsupportedOption(let option): return "macnotif: unsupported option \(option)"
         case .missingTitle: return "macnotif: --title is required and must not be empty"
         case .invalidMode: return "macnotif: mode must be temporary or permanent"
         case .invalidDuration: return "macnotif: duration must be a positive number of seconds"
-        case .invalidColor: return "macnotif: border color must be a 6- or 8-digit hex color"
         case .executableUnavailable: return "macnotif: cannot locate the HUD executable"
         }
     }
 }
 
+let configuration: NoticeConfiguration
+do {
+    configuration = try NoticeConfiguration.load()
+} catch {
+    fputs("\(error)\n", stderr)
+    exit(EXIT_FAILURE)
+}
+
 if CommandLine.arguments.count > 1 {
-    do { try runCommandLine() }
+    do { try runCommandLine(configuration: configuration) }
     catch {
         fputs("\(error)\n", stderr)
         exit(EXIT_FAILURE)
