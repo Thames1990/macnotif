@@ -74,6 +74,39 @@ for value in 0 -1 inf nan '"2"' true '[]' '{}'; do
     expect_config_error "[notice]
 duration = $value" 'notice.duration must be a finite positive number of seconds'
 done
+expect_config_error 'appearance = false' 'appearance must be a table'
+expect_config_error '[appearance]
+accent = "#ff0000"' 'unknown setting appearance.accent'
+for key in width min_height padding icon_spacing text_spacing stack_spacing title_size detail_size symbol_size corner_radius border_width animation_duration; do
+    for value in -1 inf nan '"14"' true '[]' 10000; do
+        expect_config_error "[appearance]
+$key = $value" "appearance.$key must be a finite number"
+    done
+done
+for key in width min_height title_size detail_size symbol_size; do
+    expect_config_error "[appearance]
+$key = 0" "appearance.$key must be a finite number"
+done
+expect_config_error '[appearance]
+shadow = "false"' 'appearance.shadow must be a boolean'
+for key in permanent_symbol temporary_symbol; do
+    for value in '""' '"not.a.real.macnotif.symbol"' 1; do
+        expect_config_error "[appearance]
+$key = $value" "appearance.$key must be a valid SF Symbol name"
+    done
+done
+for theme in light dark; do
+    expect_config_error "[appearance]
+$theme = false" "appearance.$theme must be a table"
+    expect_config_error "[appearance.$theme]
+accent = '#ff0000'" "unknown setting appearance.$theme.accent"
+    for key in background title detail symbol border; do
+        for value in '"ff0000"' '"#fff"' '"#gg0000"' '"#123456789"' 1; do
+            expect_config_error "[appearance.$theme]
+$key = $value" "appearance.$theme.$key must be"
+        done
+    done
+done
 expect_config_error '[notice
 mode = "permanent"' ':1:'
 expect_config_error '[notice]
@@ -124,8 +157,80 @@ fi
 grep -Fq "$config_file:" "$test_home/stderr"
 rmdir "$config_file"
 
+# Visual design is configured in TOML, independently of Notice content/lifecycle.
+cat > "$config_file" <<'TOML'
+[appearance]
+corner_radius = 12
+shadow = false
+title_size = 48
+detail_size = 32
+symbol_size = 18
+permanent_symbol = "pin.fill"
+temporary_symbol = "bell"
+animation_duration = 0.2
+border_width = 1
+width = 384
+min_height = 40
+padding = 14
+icon_spacing = 10
+text_spacing = 3
+stack_spacing = 8
+[appearance.light]
+background = "#f5f5f5ee"
+title = "#111111"
+detail = "#333333"
+symbol = "#333333"
+border = "#666666"
+[appearance.dark]
+background = "#222222ee"
+title = "#ffffff"
+detail = "#dddddd"
+symbol = "#dddddd"
+border = "#999999"
+TOML
+"$binary" --title "Custom appearance" --description "Content is unchanged" --duration 30
+grep -Fq '"title":"Custom appearance"' "$temporary_file"
+grep -Fq '"description":"Content is unchanged"' "$temporary_file"
+grep -Eq '"duration":30([,}])' "$temporary_file"
+test ! -e "$permanent_file"
+# Observe the public Window Server boundary, not private AppKit views.
+swift - "$binary" <<'SWIFT'
+import CoreGraphics
+import Foundation
+
+let executable = CommandLine.arguments[1]
+var found = false
+for _ in 0..<30 {
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], 0)
+        as? [[String: Any]] ?? []
+    for window in windows {
+        guard let pid = window[kCGWindowOwnerPID as String] as? Int32,
+              let bounds = window[kCGWindowBounds as String] as? [String: Any],
+              let width = bounds["Width"] as? Double,
+              let height = bounds["Height"] as? Double else { continue }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-p", String(pid), "-o", "comm="]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let command = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        process.waitUntilExit()
+        if command == executable && width == 384 && height >= 108 { found = true; break }
+    }
+    if found { break }
+    Thread.sleep(forTimeInterval: 0.05)
+}
+guard found else {
+    fputs("Configured width and space for larger text were not visible at the Window Server boundary\n", stderr)
+    exit(1)
+}
+SWIFT
+rm "$config_file"
+
 # Missing HOME config, empty files, and empty tables all keep built-in defaults.
-for contents in missing '' '[notice]'; do
+for contents in missing '' '[notice]' '[appearance]' '[appearance.light]' '[appearance.dark]'; do
     if [[ "$contents" != missing ]]; then
         printf '%s\n' "$contents" > "$config_file"
     fi

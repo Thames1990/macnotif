@@ -2,6 +2,9 @@
 
 MacNotif is a lightweight macOS HUD for temporary and permanent notices. It
 displays messages above other windows using macOS's adaptive HUD material.
+This is a custom panel, not a Notification Center banner: Notices do not appear
+in Notification Center history, integrate with Focus, or follow per-app
+notification delivery settings.
 
 ## Homebrew installation
 
@@ -123,5 +126,97 @@ configuration settings. Each invocation reads the file at startup. Invalid
 TOML, unknown settings or sections, invalid types, and unreadable files stop
 startup with a diagnostic on stderr, even if CLI overrides were supplied or
 the invocation is `--clear`. Syntax errors identify the file, line, and
-column; setting errors identify the file and setting. Currently only the
-`[notice]` settings above are supported.
+column; setting errors identify the file and setting.
+
+### Panel appearance
+
+The built-in design uses adaptive macOS material, semantic system text colors,
+a subtle system shadow, and **no border**. It follows system light/dark
+appearance changes while the HUD is running; there is no forced-theme setting.
+Permanent notices remain above Temporary notices when both are visible.
+Appearance settings never change Notice content, replacement, expiration, or
+clearing behavior.
+
+All visual tokens live in TOML, not CLI flags. This example shows the built-in
+values; every field is optional:
+
+```toml
+[appearance]
+width = 360
+min_height = 54
+padding = 14
+icon_spacing = 12
+text_spacing = 2
+stack_spacing = 8
+title_size = 14
+detail_size = 13
+symbol_size = 16
+corner_radius = 14
+shadow = true
+permanent_symbol = "pin.fill"
+temporary_symbol = "bell.fill"
+animation_duration = 0.15
+border_width = 0
+```
+
+Dimensions, font sizes, and spacing are in points; animation duration is in
+seconds. `min_height` is a minimum, not a fixed height: bars grow to fit their
+text and vertical padding. Width also grows if necessary to accommodate
+padding, the symbol, icon spacing, and at least 96 points of text. Titles and
+details retain their single-line truncation behavior.
+
+| Token | Accepted values |
+| --- | --- |
+| `width` | 160-1200 |
+| `min_height` | 32-400 |
+| `padding`, `icon_spacing`, `stack_spacing` | 0-80 |
+| `text_spacing` | 0-40 |
+| `title_size`, `detail_size`, `symbol_size` | 8-96 |
+| `corner_radius` | 0-100 |
+| `border_width` | 0-10; zero disables the border |
+| `animation_duration` | 0-2; zero disables the brief Notice fade-in |
+| `shadow` | Boolean |
+| `permanent_symbol`, `temporary_symbol` | Valid SF Symbol names available on the running macOS version |
+
+Numeric tokens accept finite integers or floats. Invalid tokens are rejected
+with a file/setting diagnostic rather than silently ignored.
+
+#### Light and dark color overrides
+
+Omitted colors keep semantic system defaults. Override only the colors you
+want in each appearance; one appearance's overrides never leak into the other.
+For example, this deliberately replaces the material's default background
+and enables an optional border:
+
+```toml
+[appearance]
+border_width = 1
+
+[appearance.light]
+background = "#F5F5F5EE"
+title = "#202020"
+detail = "#404040"
+symbol = "#404040"
+border = "#808080"
+
+[appearance.dark]
+background = "#242424EE"
+title = "#FFFFFF"
+detail = "#DDDDDD"
+symbol = "#DDDDDD"
+border = "#909090"
+```
+
+Each color accepts `"#RRGGBB"` or `"#RRGGBBAA"` (sRGB, optional alpha). Without a
+custom border color, an enabled border uses the system separator color. A
+border color alone does not enable the border. Explicit colors may diverge
+from the native palette; choose legible foreground/background pairs.
+
+**Accessibility preferences are authoritative**, including changes while
+running. Reduce Motion disables Notice animations, including an animation
+already in progress. Increase Contrast replaces custom colors with opaque
+system background and primary text colors and enforces at least a one-point
+system-color outline. Reduce Transparency replaces custom/translucent
+backgrounds with the opaque system background. Text never shrinks below
+AppKit's preferred headline/body sizes, even when smaller sizes are configured;
+larger preferred text increases the bar height instead of clipping it.
