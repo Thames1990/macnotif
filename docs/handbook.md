@@ -25,9 +25,13 @@ ruby tests/handbook-workflow.rb
 The standard Jekyll command loads the root `Gemfile`, `Gemfile.lock`, and
 `_config.yml`, including repository plugins. The source is `handbook/`, and
 the generated destination is `_site/`. Do not publish the repository root or
-commit generated output. The output-only `tests/handbook.sh` checks the built
-site, not source templates; it also accepts an alternate destination as its
-first argument. Always rebuild before checking so stale output cannot pass.
+commit generated output. `tests/handbook.sh` checks the built public output,
+not source templates; it also accepts an alternate destination as its first
+argument. Always rebuild before checking so stale output cannot pass. It also
+runs `tests/handbook-changelog.sh`, which edits only the canonical changelog in
+a disposable source tree and rebuilds it to verify the change reaches the
+generated page. This additional build needs the same installed bundle and
+leaves the working changelog untouched.
 
 When changing dependencies, update and commit `Gemfile.lock` with the Gemfile.
 Keep local Ruby and CI aligned. When adding build inputs or changing output
@@ -46,6 +50,10 @@ it during the Jekyll build, including `Unreleased`; never copy entries into a
 second changelog or derive release history from commits or PR titles. Preserve
 the [curated changelog policy](../CONTRIBUTING.md#curated-changelog) and the
 existing application release tooling.
+
+`handbook/_plugins/changelog.rb` reads the root changelog during each build
+and generates the navigable `/changelog/` page. Edit only `CHANGELOG.md` to
+update release history; no handbook copy needs synchronization.
 
 Because the handbook follows `main`, a guide can describe behavior absent from
 the latest installed release. Explicitly label such behavior **Unreleased**
