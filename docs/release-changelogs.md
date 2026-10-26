@@ -6,8 +6,8 @@ synchronization are implemented.
 
 MacNotif uses curated `CHANGELOG.md` entries as the source of user-facing
 GitHub release notes. Version selection and release timing remain manual.
-This follows [Dinky's approach](https://github.com/mikker/Dinky/blob/main/scripts/release.sh):
-automate extraction and publication, not writing notes from commit messages.
+The workflow automates extraction and publication, not writing notes from
+commit messages.
 
 The manual workflow is the only publication entry point. It prepares an
 immutable source identity before either native build, and publishes the
@@ -120,9 +120,9 @@ Exclude the release-workflow and agent-documentation changes from user notes.
 
 #### Breaking Changes
 
-- Renamed `dinky-notify` to `macnotif`. Existing installations do not migrate
-  automatically; uninstall the old formula before installing `macnotif`.
-- Removed the legacy `mode NAME` and `end` commands and Dinky configuration
+- Renamed the project to `macnotif`. Existing installations do not migrate
+  automatically; uninstall the previous formula before installing `macnotif`.
+- Removed the legacy `mode NAME` and `end` commands and legacy configuration
   lookup. Use MacNotif's explicit notice arguments and `--clear` instead.
 
 Evidence: [Homebrew distribution](https://github.com/Thames1990/macnotif/pull/9),

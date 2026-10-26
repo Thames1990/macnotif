@@ -30,7 +30,7 @@ macnotif --clear
 
 The Homebrew distribution is an unsigned executable. See the
 [installation guide](https://macnotif.mohrworks.com/installation/) for manual
-builds, updates, migration from `dinky-notify`, and Gatekeeper guidance.
+builds, updates, migrating existing installations, and Gatekeeper guidance.
 
 ## Documentation
 
