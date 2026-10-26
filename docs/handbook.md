@@ -2,8 +2,9 @@
 
 The handbook is a Jekyll site using Just the Docs. It tracks current `main`,
 not a separate documentation release or a versioned copy for each application
-release. The intended public address is <https://macnotif.mohrworks.com/>;
-adding the workflow does not activate that address.
+release. The live public address is <https://macnotif.mohrworks.com/>.
+The source repository is also public, following the owner's explicit decision
+at activation to use GitHub Pages without a paid plan.
 
 ## Preview and check locally
 
@@ -44,11 +45,8 @@ path. Do not replace the standard build with a separate CI-only renderer.
 
 Detailed public user guides belong in `handbook/`: overview, installation,
 CLI usage, and configuration, including appearance, diagnostics, accessibility,
-and live reload. Until the handbook is live and its activation has been
-separately authorized, preserve the existing README so readers are not directed
-to an unavailable handbook. After activation, keep a useful quick start in the
-README, linking to the handbook rather than maintaining duplicate detailed
-guides.
+and live reload. Keep a useful quick start in the README, linking to the
+live handbook rather than maintaining duplicate detailed guides.
 
 The root `CHANGELOG.md` remains the sole curated release-history source. Render
 it during the Jekyll build, including `Unreleased`; never copy entries into a
@@ -107,20 +105,26 @@ production build and public-output checks remain the primary content checks.
 The handbook workflow does not finalize release notes, create application
 releases, update the Homebrew tap, or modify existing release workflows.
 
-## Activation is a separate owner action
+## Hosting and activation
 
-Do not enable Pages, modify DNS, merge automatically, or change repository
-visibility as part of preparing or checking this workflow. Publication is not
-verified live until a separately authorized merge and activation.
+The owner authorized making `Thames1990/macnotif` public on 2026-10-26 rather
+than purchasing GitHub Pro for private-repository Pages eligibility. Pages
+uses GitHub Actions, the `github-pages` environment permits only `main`, and
+the handbook is deployed at <https://macnotif.mohrworks.com/>. The domain uses
+a DNS-only CNAME to `thames1990.github.io`, with GitHub-managed TLS and enforced
+HTTPS. The existing account-level verification of `mohrworks.com` covers this
+subdomain; preserve its verification TXT record.
 
-Before activation, complete and review the handbook and make the deployment
-workflow available on `main`. Recheck live settings, confirm the account plan
-permits public Pages from this private repository, and resolve conflicting
-settings rather than overwriting them. If the plan is ineligible, report that
-blocker; do not make the repository public or substitute a hosting provider.
+Future hosting, DNS, or repository-visibility changes require separate owner
+authorization. Routine handbook changes do not require reactivation.
 
-With separate authorization, select GitHub Actions as the Pages source and
-restrict the `github-pages` environment to `main`. Configure the custom domain
+Before any hosting change, recheck live settings and resolve conflicting
+configuration rather than overwriting it. If the repository is made private
+in the future, first confirm the account plan supports Pages from a private
+repository and the required deployment-environment controls.
+
+Keep GitHub Actions as the Pages source and restrict the `github-pages`
+environment to `main`. Keep the custom domain
 `macnotif.mohrworks.com`, with a Cloudflare **DNS-only** CNAME pointing to
 `thames1990.github.io`. Cloudflare supplies DNS only, not proxying, caching, or
 TLS termination; no Cloudflare credentials belong in this workflow. Use
