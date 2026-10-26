@@ -6,6 +6,7 @@ permalink: /configuration/
 ---
 
 # Configuration
+{: .no_toc }
 
 Customize notice defaults, display selection, placement, and appearance with an
 optional TOML file. Every setting is optional; start with just what you want to
@@ -17,7 +18,6 @@ main-only settings will be marked **Unreleased** rather than implied to work in
 an installed release.
 
 ## On this page
-
 {: .no_toc }
 
 1. TOC
