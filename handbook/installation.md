@@ -78,9 +78,9 @@ trust. If macOS blocks it, review the specific warning and Apple's
 Do not disable Gatekeeper system-wide or remove quarantine from files you have
 not verified.
 
-## Migrating from dinky-notify
+## Existing installations
 
-Old installations do not migrate automatically. Uninstall the old
-`dinky-notify` formula before installing `macnotif`. The manual installer leaves
-`DinkyModeHUD.app`, the old command, and saved state untouched; remove them
-yourself if no longer needed. MacNotif provides no old-name aliases.
+Existing installations do not migrate automatically. Remove any previous
+Homebrew formula before installing `macnotif`. The manual installer leaves
+previous app bundles, commands, and saved state untouched; remove them yourself
+if no longer needed. MacNotif provides no previous-name aliases.

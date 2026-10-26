@@ -24,7 +24,7 @@
 
 ### Breaking Changes
 
-- Renamed `dinky-notify` to `macnotif`. Existing installations do not migrate
-  automatically; uninstall the old formula before installing `macnotif`.
-- Removed the legacy `mode NAME` and `end` commands and Dinky configuration
+- Renamed the project to `macnotif`. Existing installations do not migrate
+  automatically; uninstall the previous formula before installing `macnotif`.
+- Removed the legacy `mode NAME` and `end` commands and legacy configuration
   lookup. Use MacNotif's explicit notice arguments and `--clear` instead.
