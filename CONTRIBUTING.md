@@ -1,5 +1,12 @@
 # Contributing
 
+## Handbook
+
+See [handbook maintenance and publication](docs/handbook.md) for local preview,
+production checks, content ownership, and the main-only GitHub Pages workflow.
+The handbook tracks current `main`; label behavior not yet released rather than
+maintaining versioned guides.
+
 ## Curated changelog
 
 [CHANGELOG.md](CHANGELOG.md) is the canonical user-facing release history.

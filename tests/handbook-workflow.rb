@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+require "minitest/autorun"
+require "yaml"
+
+class HandbookWorkflowTest < Minitest::Test
+  def setup
+    path = File.expand_path("../.github/workflows/handbook.yml", __dir__)
+    @workflow = YAML.safe_load(File.read(path))
+  end
+
+  def test_pull_requests_build_and_check_without_publication_credentials
+    assert @workflow.fetch("on").key?("pull_request")
+    assert_nil @workflow.fetch("on").fetch("pull_request"), "Check every PR without path or branch filters"
+    assert_equal({}, @workflow.fetch("permissions"))
+    build = @workflow.fetch("jobs").fetch("build")
+    refute build.key?("if"), "The build must not be skipped for PRs"
+    assert_equal({"contents" => "read"}, build.fetch("permissions"))
+    commands = build.fetch("steps").map { |step| step["run"] }.compact
+    assert_includes commands, "bundle exec jekyll build"
+    assert_equal "production", build.fetch("env").fetch("JEKYLL_ENV")
+    assert_includes commands, "bash tests/handbook.sh"
+    refute_match(/secrets\.|CLOUDFLARE|deploy-pages|configure-pages/, build.to_yaml)
+    checkout = build.fetch("steps").find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
+    assert_equal false, checkout.fetch("with").fetch("persist-credentials")
+  end
+
+  def test_only_checked_main_pushes_can_publish
+    assert_equal ["main"], @workflow.fetch("on").fetch("push").fetch("branches")
+    assert_equal ["branches"], @workflow.fetch("on").fetch("push").keys,
+      "Main publication must include changelog-only updates and future build inputs"
+    assert_equal %w[pull_request push], @workflow.fetch("on").keys.sort
+    assert_equal %w[build deploy], @workflow.fetch("jobs").keys.sort
+    main_push = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    build = @workflow.fetch("jobs").fetch("build")
+    upload = build.fetch("steps").find do |step|
+      step.fetch("uses", "").start_with?("actions/upload-pages-artifact@")
+    end
+    refute_nil upload, "Checked output must be passed through a Pages artifact"
+    assert_equal main_push, upload.fetch("if")
+    assert_equal "_site", upload.fetch("with").fetch("path")
+    assert_equal upload, build.fetch("steps").last, "Never upload before output checks pass"
+    deploy = @workflow.fetch("jobs").fetch("deploy")
+    assert_equal main_push, deploy.fetch("if")
+    assert_equal "build", deploy.fetch("needs")
+    assert_equal({"pages" => "write", "id-token" => "write"}, deploy.fetch("permissions"))
+    assert_equal "github-pages", deploy.fetch("environment").fetch("name")
+    steps = deploy.fetch("steps")
+    assert_equal 1, steps.length, "Privileged deployment must not check out or run source"
+    assert_match(/\Aactions\/deploy-pages@[0-9a-f]{40}\z/, steps.first.fetch("uses"))
+    refute_match(/secrets\.|CLOUDFLARE|configure-pages/, @workflow.to_yaml)
+  end
+end

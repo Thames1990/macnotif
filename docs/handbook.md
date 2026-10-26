@@ -1,0 +1,121 @@
+# Handbook maintenance and publication
+
+The handbook is a Jekyll site using Just the Docs. It tracks current `main`,
+not a separate documentation release or a versioned copy for each application
+release. The intended public address is <https://macnotif.mohrworks.com/>;
+adding the workflow does not activate that address.
+
+## Preview and check locally
+
+Use Ruby 3.3 (the CI version), Bundler, and Python 3. From the repository root:
+
+```sh
+bundle install
+bundle exec jekyll serve --host 127.0.0.1
+```
+
+Open <http://127.0.0.1:4000/>. Stop the preview before checking production output:
+
+```sh
+JEKYLL_ENV=production bundle exec jekyll build
+bash tests/handbook.sh
+ruby tests/handbook-workflow.rb
+```
+
+The standard Jekyll command loads the root `Gemfile`, `Gemfile.lock`, and
+`_config.yml`, including repository plugins. The source is `handbook/`, and
+the generated destination is `_site/`. Do not publish the repository root or
+commit generated output. The output-only `tests/handbook.sh` checks the built
+site, not source templates; it also accepts an alternate destination as its
+first argument. Always rebuild before checking so stale output cannot pass.
+
+When changing dependencies, update and commit `Gemfile.lock` with the Gemfile.
+Keep local Ruby and CI aligned. When adding build inputs or changing output
+paths, update the workflow and checks together, including the Pages artifact
+path. Do not replace the standard build with a separate CI-only renderer.
+
+## Content ownership and review
+
+Detailed public user guides belong in `handbook/`: overview, installation,
+CLI usage, and configuration, including appearance, diagnostics, accessibility,
+and live reload. Keep a useful quick start in the README, linking to the
+handbook rather than maintaining duplicate detailed guides.
+
+The root `CHANGELOG.md` remains the sole curated release-history source. Render
+it during the Jekyll build, including `Unreleased`; never copy entries into a
+second changelog or derive release history from commits or PR titles. Preserve
+the [curated changelog policy](../CONTRIBUTING.md#curated-changelog) and the
+existing application release tooling.
+
+Because the handbook follows `main`, a guide can describe behavior absent from
+the latest installed release. Explicitly label such behavior **Unreleased**
+beside the affected setting, option, or example until a release includes it.
+There is no version selector. Include new configuration pages and changelog
+content in generated-output and search checks as those sections are added;
+do not disable checks while waiting for another handbook slice.
+
+Agent instructions, ADRs, maintainer procedures (including this document),
+release tooling, and other repository-only material must stay out of both
+generated pages and search data. Keep the Jekyll public source boundary
+explicit; do not broaden it to the whole repository to include the changelog.
+
+Review the production output and internal links as well as source changes.
+For navigation, search, styling, or theme changes, also check the browser:
+search for CLI and configuration terms, follow sidebar links, try a narrow
+viewport, inspect code blocks, and switch light/dark schemes. Automated output
+checks do not prove those interactions work.
+
+## Pull requests and publication
+
+`.github/workflows/handbook.yml` builds and checks every pull request. This
+includes fork pull requests: checkout credentials are not persisted, the build
+job has only `contents: read`, and no Cloudflare or other publication secrets
+are supplied. PR runs do not upload a Pages artifact or run the deploy job.
+
+Every push to `main` rebuilds and checks the production site, uploads `_site`
+as a GitHub Pages artifact, and then deploys that checked artifact through
+`actions/deploy-pages`. Triggers intentionally have no path filters: a
+canonical-changelog-only update, future configuration content, dependency
+lockfile, plugin, test, or other build-input change must not be missed. This
+also avoids path-filtered required checks leaving PRs pending. Ordinary pushes
+to other branches and application release tags do not publish the handbook.
+
+Permissions are denied by default and granted by job. Only the deploy job has
+`pages: write` and `id-token: write`; it uses the `github-pages` environment and
+does not check out or execute source. Its main-push guard and successful-build
+dependency are mandatory. PR runs supersede older runs for the same ref;
+main publications are serialized without cancelling an in-progress deployment.
+Keep action references pinned to full commit SHAs with version comments, and
+keep `persist-credentials: false` on build checkouts.
+
+The workflow contract check covers trigger, permission, and publication guards;
+run it when editing the workflow, and run `actionlint` if available. The
+production build and public-output checks remain the primary content checks.
+The handbook workflow does not finalize release notes, create application
+releases, update the Homebrew tap, or modify existing release workflows.
+
+## Activation is a separate owner action
+
+Do not enable Pages, modify DNS, merge automatically, or change repository
+visibility as part of preparing or checking this workflow. Publication is not
+verified live until a separately authorized merge and activation.
+
+Before activation, complete and review the handbook and make the deployment
+workflow available on `main`. Recheck live settings, confirm the account plan
+permits public Pages from this private repository, and resolve conflicting
+settings rather than overwriting them. If the plan is ineligible, report that
+blocker; do not make the repository public or substitute a hosting provider.
+
+With separate authorization, select GitHub Actions as the Pages source and
+restrict the `github-pages` environment to `main`. Configure the custom domain
+`macnotif.mohrworks.com`, with a Cloudflare **DNS-only** CNAME pointing to
+`thames1990.github.io`. Cloudflare supplies DNS only, not proxying, caching, or
+TLS termination; no Cloudflare credentials belong in this workflow. Use
+GitHub-managed certificates and enable enforced HTTPS when provisioning is
+ready.
+
+After activation, verify the Pages deployment and its environment URL, DNS-only
+resolution, the expected handbook at the custom-domain root, and valid HTTPS.
+Also verify navigation, search, narrow-screen layout, and light/dark behavior
+on the live site. Until then, a successful build or prepared workflow is not
+evidence that the handbook is publicly hosted.
