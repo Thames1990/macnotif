@@ -1,3 +1,8 @@
 build/
 .build/
 .DS_Store
+.bundle/
+vendor/
+_site/
+.jekyll-cache/
+handbook/.jekyll-cache/
