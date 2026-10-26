@@ -7,7 +7,9 @@ adding the workflow does not activate that address.
 
 ## Preview and check locally
 
-Use Ruby 3.3 (the CI version), Bundler, and Python 3. From the repository root:
+Use Ruby 3.3 (the CI version; locked dependencies require Ruby >=3.2),
+the Bundler version under `BUNDLED WITH` in `Gemfile.lock`, and Python 3.
+From the repository root:
 
 ```sh
 bundle install
