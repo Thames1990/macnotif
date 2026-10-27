@@ -87,8 +87,14 @@ checks do not prove those interactions work.
 
 ## Pull requests and publication
 
-`.github/workflows/handbook.yml` builds and checks every pull request, with no
-path or branch filter. Jekyll
+`.github/workflows/handbook.yml` starts on every pull request, with no
+path or branch filter. Change detection compares the PR head against its merge
+base and builds only for `docs/**`, `CHANGELOG.md`,
+`.github/workflows/handbook.yml`, or `tests/handbook*` changes. The required
+`Handbook` gate always reports: it accepts an intentionally skipped build for
+unrelated changes, but rejects detection errors, failed or cancelled builds,
+and unexpected skips. Require this gate, not the conditional build job.
+Jekyll
 commands run from `docs/handbook`, so the checked output and Pages artifact are
 `docs/handbook/_site/`. This includes fork pull requests: checkout credentials
 are not persisted, the build job has only `contents: read`, and no Cloudflare
@@ -103,8 +109,7 @@ canonical-changelog-only updates, documentation, dependency lockfiles, plugins,
 and handbook checks while skipping unrelated application changes, so the
 online page only updates when its content changes. When adding build inputs or
 checks outside these paths, extend the push filter and the workflow contract
-test. Because PR runs are unfiltered, the handbook check may be a required PR
-check. Ordinary pushes
+test. Keep the detection paths aligned with the push filter. Ordinary pushes
 to other branches and application release tags do not publish the handbook.
 
 Use `workflow_dispatch` for a manual rebuild without changing a file. Manual

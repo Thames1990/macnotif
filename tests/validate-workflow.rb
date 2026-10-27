@@ -16,6 +16,7 @@ class ValidateWorkflowTest < Minitest::Test
   def test_every_pr_reports_a_gate_and_builds_remain_conditional
     assert @workflow.fetch("on").key?("pull_request")
     assert_nil @workflow.fetch("on").fetch("pull_request")
+    assert_equal ["main"], @workflow.fetch("on").fetch("push").fetch("branches")
     assert_equal({"contents" => "read"}, @workflow.fetch("permissions"))
     assert_equal "always()", @jobs.fetch("validate").fetch("if")
     assert_equal "Validate", @jobs.fetch("validate").fetch("name")
