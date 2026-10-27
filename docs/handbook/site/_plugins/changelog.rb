@@ -2,7 +2,11 @@ module MacNotif
   class ChangelogGenerator < Jekyll::Generator
     def generate(site)
       page = Jekyll::PageWithoutAFile.new(site, site.source, "changelog", "index.md")
-      page.content = File.read(File.expand_path("../../../CHANGELOG.md", site.source))
+      changelog = File.read(File.expand_path("../../../CHANGELOG.md", site.source))
+      sections = changelog.split(/(?=^## )/)
+      page.content = sections.reject do |section|
+        section.lines.first&.strip == "## Unreleased"
+      end.join
       page.data.merge!(
         "layout" => "default",
         "title" => "Changelog",

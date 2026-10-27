@@ -75,10 +75,11 @@ changelog = site / "changelog/index.html"
 assert changelog.is_file(), "The handbook must publish /changelog/"
 page = Page(changelog.read_text())
 assert "Changelog" in page.headings, "The changelog needs a page heading"
-assert "Unreleased" in page.headings, "Upcoming changes must remain visible"
+assert "Unreleased" not in page.headings, "Unreleased changes must not be published"
 for line in canonical.splitlines():
     if line.startswith("## "):
-        assert line[3:] in page.headings, f"Missing release heading: {line[3:]}"
+        if line[3:] != "Unreleased":
+            assert line[3:] in page.headings, f"Missing release heading: {line[3:]}"
 assert "/changelog/" in Page((site / "index.html").read_text()).links, \
     "Readers must be able to navigate to Changelog from the overview"
 assert "Homebrew distribution with native Apple Silicon and Intel executables." in \
@@ -95,8 +96,13 @@ assert content.count("## Unreleased\n") == 1
 path.write_text(content.replace(
     "## Unreleased\n",
     "## Unreleased\n\n### Fixed\n\n"
+    "- Unreleased handbook probe must not be published.\n",
+    1,
+).replace(
+    "## 1.1.0 - 2026-10-25\n",
+    "## 1.1.0 - 2026-10-25\n\n### Canonical Probe Anchor\n\n"
     "- Canonical changelog probe **formatted** with `--clear` and "
-    "[upcoming changes](#unreleased).\n",
+    "[released changes](#canonical-probe-anchor).\n",
     1,
 ))
 PY
@@ -115,15 +121,15 @@ class Probe(HTMLParser):
         self.formatted = False
         self.code = False
         self.link = False
-        self.unreleased_anchor = False
+        self.probe_anchor = False
         self.text = []
         self.feed(html)
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         self.stack.append((tag, attrs))
-        if attrs.get("id") == "unreleased":
-            self.unreleased_anchor = True
+        if attrs.get("id") == "canonical-probe-anchor":
+            self.probe_anchor = True
 
     def handle_endtag(self, tag):
         for index in range(len(self.stack) - 1, -1, -1):
@@ -138,15 +144,17 @@ class Probe(HTMLParser):
         tag, attrs = self.stack[-1]
         self.formatted |= tag == "strong" and data == "formatted"
         self.code |= tag == "code" and data == "--clear"
-        self.link |= tag == "a" and attrs.get("href") == "#unreleased" \
-            and data == "upcoming changes"
+        self.link |= tag == "a" and attrs.get("href") == "#canonical-probe-anchor" \
+            and data == "released changes"
 
 
 page = Probe(Path(sys.argv[1]).read_text())
 assert "Canonical changelog probe" in "".join(page.text), \
     "Editing only the canonical changelog must update generated output"
 assert page.formatted and page.code, "Curated Markdown formatting must render"
-assert page.link and page.unreleased_anchor, "Changelog fragment links must resolve"
+assert page.link and page.probe_anchor, "Changelog fragment links must resolve"
+assert "Unreleased handbook probe" not in "".join(page.text), \
+    "Unreleased changelog content must not be published"
 PY
 
 echo "Handbook canonical changelog checks passed"
