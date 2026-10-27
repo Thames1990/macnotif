@@ -2,9 +2,20 @@ name: Validate
 
 on:
   pull_request:
+    paths: &app_paths
+      - Sources/**
+      - Resources/**
+      - Package.swift
+      - Package.resolved
+      - scripts/**
+      - templates/**
+      - tests/release-*
+      - tests/formula-template.sh
+      - .github/workflows/validate.yml
   push:
     branches:
       - "**"
+    paths: *app_paths
 
 permissions:
   contents: read

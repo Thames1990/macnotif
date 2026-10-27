@@ -87,23 +87,24 @@ checks do not prove those interactions work.
 
 ## Pull requests and publication
 
-`.github/workflows/handbook.yml` builds and checks pull requests that change
-`docs/**`, `CHANGELOG.md`, `.github/workflows/handbook.yml`, or
-`tests/handbook*`. Jekyll
+`.github/workflows/handbook.yml` builds and checks every pull request, with no
+path or branch filter. Jekyll
 commands run from `docs/handbook`, so the checked output and Pages artifact are
 `docs/handbook/_site/`. This includes fork pull requests: checkout credentials
 are not persisted, the build job has only `contents: read`, and no Cloudflare
 or other publication secrets are supplied. PR runs do not upload a Pages
 artifact or run the deploy job.
 
-Pushes to `main` matching the same path filters rebuild and check the production
+Pushes to `main` that change `docs/**`, `CHANGELOG.md`,
+`.github/workflows/handbook.yml`, or `tests/handbook*` rebuild and check the production
 site, upload `docs/handbook/_site/` as a GitHub Pages artifact, and then deploy that
 checked artifact through `actions/deploy-pages`. These filters include
 canonical-changelog-only updates, documentation, dependency lockfiles, plugins,
-and handbook checks while skipping unrelated application changes. When adding
-build inputs or checks outside these paths, extend both trigger filters and the
-workflow contract test. Do not make the path-filtered handbook check a required
-PR check: GitHub leaves skipped required checks pending. Ordinary pushes
+and handbook checks while skipping unrelated application changes, so the
+online page only updates when its content changes. When adding build inputs or
+checks outside these paths, extend the push filter and the workflow contract
+test. Because PR runs are unfiltered, the handbook check may be a required PR
+check. Ordinary pushes
 to other branches and application release tags do not publish the handbook.
 
 Use `workflow_dispatch` for a manual rebuild without changing a file. Manual

@@ -2,11 +2,6 @@ name: Handbook
 
 "on":
   pull_request:
-    paths:
-      - docs/**
-      - CHANGELOG.md
-      - .github/workflows/handbook.yml
-      - tests/handbook*
   push:
     branches:
       - main
