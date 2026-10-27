@@ -28,6 +28,16 @@ Keep one `Unreleased` section above newest-first released sections. Released
 headings use `VERSION - YYYY-MM-DD`, without the tag's `v` prefix. Leave
 `Unreleased` empty when there are no upcoming user-facing changes.
 
+## Required CI checks
+
+The main branch ruleset requires the `Validate` gate, not the individual
+`arm64 macOS` and `x86_64 macOS` jobs. The workflow runs on every PR, compares
+app-related paths against the PR merge base, and builds both architectures only
+when those paths change. The gate succeeds for documentation-only changes and
+fails if change detection or either required build fails or is cancelled.
+Keep the gate required when editing the workflow or repository ruleset; requiring
+path-filtered workflows can leave documentation-only PRs waiting indefinitely.
+
 ## Releases
 
 Follow the [maintainer release procedure](docs/maintainer-releases.md).
