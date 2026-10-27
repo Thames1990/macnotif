@@ -20,9 +20,13 @@ git ls-files -z --cached --others --exclude-standard |
 
 build() {
     (
-        cd "$source_directory/docs/handbook"
-        BUNDLE_GEMFILE="$source_directory/docs/handbook/Gemfile" JEKYLL_ENV=production \
-            bundle exec jekyll build --destination "$test_directory/site"
+        # Keep the installed bundle's local configuration outside the disposable tree.
+        cd "$repo_root/docs/handbook"
+        BUNDLE_GEMFILE="$repo_root/docs/handbook/Gemfile" JEKYLL_ENV=production \
+            bundle exec jekyll build \
+                --config "$source_directory/docs/handbook/_config.yml" \
+                --source "$source_directory/docs/handbook/site" \
+                --destination "$test_directory/site"
     )
 }
 

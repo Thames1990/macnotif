@@ -39,6 +39,9 @@ also runs `tests/handbook-changelog.sh`, which edits only the canonical
 changelog in a disposable source tree and rebuilds it to verify the change
 reaches the generated page. This additional build needs the same installed
 bundle and leaves the working changelog untouched.
+The disposable rebuild uses the original handbook bundle and its local Bundler
+configuration, so CI's cached gems remain available without copying dependencies
+or installing them again.
 
 When changing dependencies, update and commit `docs/handbook/Gemfile.lock` with
 the Gemfile. Keep local Ruby and CI aligned. When adding build inputs or
