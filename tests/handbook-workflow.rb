@@ -10,8 +10,8 @@ class HandbookWorkflowTest < Minitest::Test
 
   def test_pull_requests_build_and_check_without_publication_credentials
     assert @workflow.fetch("on").key?("pull_request")
-    assert_equal ["paths"], @workflow.fetch("on").fetch("pull_request").keys,
-      "Check relevant PRs regardless of their target branch"
+    assert_nil @workflow.fetch("on").fetch("pull_request"),
+      "Check every PR so the check can be required; no path or branch filters"
     assert_equal({}, @workflow.fetch("permissions"))
     build = @workflow.fetch("jobs").fetch("build")
     refute build.key?("if"), "The build must not be skipped for PRs"
@@ -27,12 +27,10 @@ class HandbookWorkflowTest < Minitest::Test
     assert_equal false, checkout.fetch("with").fetch("persist-credentials")
   end
 
-  def test_automatic_runs_cover_handbook_inputs_and_checks
+  def test_main_pushes_publish_only_for_handbook_inputs_and_checks
     paths = %w[docs/** CHANGELOG.md .github/workflows/handbook.yml tests/handbook*]
-    %w[pull_request push].each do |event|
-      assert_equal paths, @workflow.fetch("on").fetch(event).fetch("paths"),
-        "Include documentation, canonical changelog, workflow, and handbook checks"
-    end
+    assert_equal paths, @workflow.fetch("on").fetch("push").fetch("paths"),
+      "Include documentation, canonical changelog, workflow, and handbook checks"
   end
 
   def test_only_checked_main_pushes_and_manual_runs_can_publish
