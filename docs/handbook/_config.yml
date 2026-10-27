@@ -1,5 +1,6 @@
 title: MacNotif
-source: handbook
+source: site
+destination: _site
 description: A quick-start handbook for MacNotif's macOS notice HUD.
 url: https://macnotif.mohrworks.com
 baseurl: ""
@@ -19,7 +20,7 @@ back_to_top: true
 back_to_top_text: Back to top
 gh_edit_link: false
 
-# Only handbook/ is a site source. Maintainer instructions stay outside it.
+# Only site/ is a source. Maintainer instructions stay outside it.
 exclude:
   - Gemfile
   - Gemfile.lock

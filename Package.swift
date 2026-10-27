@@ -11,10 +11,7 @@ let package = Package(
         .executableTarget(
             name: "macnotif",
             dependencies: [.product(name: "TOMLKit", package: "TOMLKit")],
-            path: ".",
-            exclude: ["Resources", "docs", "scripts", "tests", "templates", "build", "README.md",
-                      "AGENTS.md", "GLOSSARY.md", "build.sh"],
-            sources: ["main.swift", "NoticeConfiguration.swift"]
+            path: "Sources/macnotif"
         )
     ]
 )

@@ -136,9 +136,9 @@ This design does not introduce automatic version bumps outside the manually
 requested release, automatic release scheduling, commit-derived summaries, an
 in-app updater, or a changelog requirement for maintenance-only PRs.
 
-Contributor/agent guidance, the canonical changelog, the README procedure,
-the workflow, and both historical release bodies now match the implemented
-behavior. Focused tests cover section extraction, missing-note failures,
-finalization, retry identity, publication conflicts, and dispatch-only wiring.
-Future dispatches publish only their selected release and do not rewrite
-historical release bodies.
+Contributor/agent guidance, the canonical changelog, the
+[maintainer release procedure](maintainer-releases.md), the workflow, and both
+historical release bodies now match the implemented behavior. Focused tests
+cover section extraction, missing-note failures, finalization, retry identity,
+publication conflicts, and dispatch-only wiring. Future dispatches publish
+only their selected release and do not rewrite historical release bodies.

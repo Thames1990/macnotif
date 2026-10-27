@@ -3,6 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
-python3 tests/handbook-output.py "${1:-_site}"
-bash tests/handbook-configuration.sh "${1:-_site}"
-bash tests/handbook-changelog.sh "${1:-_site}"
+site_directory="${1:-$repo_root/docs/handbook/_site}"
+python3 tests/handbook-output.py "$site_directory"
+bash tests/handbook-configuration.sh "$site_directory"
+bash tests/handbook-changelog.sh "$site_directory"

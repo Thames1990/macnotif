@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
-python3 - "${1:-$repo_root/_site}" <<'PY'
+python3 - "${1:-$repo_root/docs/handbook/_site}" <<'PY'
 import json
 import sys
 import tomllib

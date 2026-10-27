@@ -47,7 +47,7 @@ The formula lives in
 With a local checkout of MacNotif's source, run from the repository root:
 
 ```sh
-./build.sh
+./scripts/build.sh
 ```
 
 Building requires the Swift compiler supplied by Xcode or its Command Line

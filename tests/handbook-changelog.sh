@@ -2,7 +2,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
-test_directory="$(mktemp -d)"
+test_directory="$repo_root/.build/handbook-changelog-test-$$"
+if [[ -e "$test_directory" ]]; then
+    echo "Refusing to overwrite existing test directory: $test_directory" >&2
+    exit 1
+fi
+mkdir -p "$test_directory"
 trap 'rm -rf "$test_directory"' EXIT
 source_directory="$test_directory/source"
 mkdir -p "$source_directory"
@@ -15,8 +20,8 @@ git ls-files -z --cached --others --exclude-standard |
 
 build() {
     (
-        cd "$source_directory"
-        BUNDLE_GEMFILE="$repo_root/Gemfile" JEKYLL_ENV=production \
+        cd "$source_directory/docs/handbook"
+        BUNDLE_GEMFILE="$source_directory/docs/handbook/Gemfile" JEKYLL_ENV=production \
             bundle exec jekyll build --destination "$test_directory/site"
     )
 }

@@ -3,6 +3,6 @@ build/
 .DS_Store
 .bundle/
 vendor/
-_site/
+docs/handbook/_site/
 .jekyll-cache/
-handbook/.jekyll-cache/
+docs/handbook/.jekyll-cache/

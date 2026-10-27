@@ -26,7 +26,7 @@ headings use `VERSION - YYYY-MM-DD`, without the tag's `v` prefix. Leave
 
 ## Releases
 
-Follow the [maintainer release procedure](README.md#maintainer-releases).
+Follow the [maintainer release procedure](docs/maintainer-releases.md).
 The manual workflow finalizes the changelog and publishes its selected
 version section, as documented in the [release changelog design](docs/release-changelogs.md).
 Dispatching a release is the maintainer's approval of its accumulated notes;

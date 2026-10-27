@@ -19,6 +19,8 @@ class HandbookWorkflowTest < Minitest::Test
     assert_includes commands, "bundle exec jekyll build"
     assert_equal "production", build.fetch("env").fetch("JEKYLL_ENV")
     assert_includes commands, "bash tests/handbook.sh"
+    build_step = build.fetch("steps").find { |step| step["run"] == "bundle exec jekyll build" }
+    assert_equal "docs/handbook", build_step.fetch("working-directory")
     refute_match(/secrets\.|CLOUDFLARE|deploy-pages|configure-pages/, build.to_yaml)
     checkout = build.fetch("steps").find { |step| step.fetch("uses", "").start_with?("actions/checkout@") }
     assert_equal false, checkout.fetch("with").fetch("persist-credentials")
@@ -37,7 +39,7 @@ class HandbookWorkflowTest < Minitest::Test
     end
     refute_nil upload, "Checked output must be passed through a Pages artifact"
     assert_equal main_push, upload.fetch("if")
-    assert_equal "_site", upload.fetch("with").fetch("path")
+    assert_equal "docs/handbook/_site", upload.fetch("with").fetch("path")
     assert_equal upload, build.fetch("steps").last, "Never upload before output checks pass"
     deploy = @workflow.fetch("jobs").fetch("deploy")
     assert_equal main_push, deploy.fetch("if")

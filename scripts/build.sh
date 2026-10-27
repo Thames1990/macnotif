@@ -2,7 +2,7 @@
 # Builds MacNotif and installs it to ~/Applications/MacNotif.app.
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")/.."
 APP="$HOME/Applications/MacNotif.app"
 BIN="$HOME/.local/bin"
 CLI="$BIN/macnotif"

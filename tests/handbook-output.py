@@ -67,7 +67,7 @@ for text in (
     "brew install Thames1990/tap/macnotif",
     "brew upgrade macnotif",
     "brew uninstall macnotif",
-    "./build.sh",
+    "./scripts/build.sh",
     "unsigned",
     "Gatekeeper",
     "command -v macnotif",

@@ -10,9 +10,11 @@ at activation to use GitHub Pages without a paid plan.
 
 Use Ruby 3.3 (the CI version; locked dependencies require Ruby >=3.2),
 the Bundler version under `BUNDLED WITH` in `Gemfile.lock`, and Python 3.
-From the repository root:
+From the repository root, run Jekyll commands with `docs/handbook` as the
+working directory:
 
 ```sh
+cd docs/handbook
 bundle install
 bundle exec jekyll serve --host 127.0.0.1
 ```
@@ -20,33 +22,36 @@ bundle exec jekyll serve --host 127.0.0.1
 Open <http://127.0.0.1:4000/>. Stop the preview before checking production output:
 
 ```sh
-JEKYLL_ENV=production bundle exec jekyll build
+cd ../..
+(cd docs/handbook && JEKYLL_ENV=production bundle exec jekyll build)
 bash tests/handbook.sh
 ruby tests/handbook-workflow.rb
 ```
 
-The standard Jekyll command loads the root `Gemfile`, `Gemfile.lock`, and
-`_config.yml`, including repository plugins. The source is `handbook/`, and
-the generated destination is `_site/`. Do not publish the repository root or
-commit generated output. `tests/handbook.sh` checks the built public output,
-not source templates; it also accepts an alternate destination as its first
-argument. Always rebuild before checking so stale output cannot pass. It also
-runs `tests/handbook-changelog.sh`, which edits only the canonical changelog in
-a disposable source tree and rebuilds it to verify the change reaches the
-generated page. This additional build needs the same installed bundle and
-leaves the working changelog untouched.
+The standard Jekyll command loads `docs/handbook/Gemfile`,
+`docs/handbook/Gemfile.lock`, and `docs/handbook/_config.yml`, including
+repository plugins. The public source is `docs/handbook/site/`, and the
+generated destination is `docs/handbook/_site/`. Do not publish the repository
+root or commit generated output. `tests/handbook.sh` checks the built public
+output, not source templates; it also accepts an alternate destination as its
+first argument. Always rebuild before checking so stale output cannot pass. It
+also runs `tests/handbook-changelog.sh`, which edits only the canonical
+changelog in a disposable source tree and rebuilds it to verify the change
+reaches the generated page. This additional build needs the same installed
+bundle and leaves the working changelog untouched.
 
-When changing dependencies, update and commit `Gemfile.lock` with the Gemfile.
-Keep local Ruby and CI aligned. When adding build inputs or changing output
-paths, update the workflow and checks together, including the Pages artifact
-path. Do not replace the standard build with a separate CI-only renderer.
+When changing dependencies, update and commit `docs/handbook/Gemfile.lock` with
+the Gemfile. Keep local Ruby and CI aligned. When adding build inputs or
+changing output paths, update the workflow and checks together, including the
+Pages artifact path. Do not replace the standard build with a separate CI-only
+renderer.
 
 ## Content ownership and review
 
-Detailed public user guides belong in `handbook/`: overview, installation,
-CLI usage, and configuration, including appearance, diagnostics, accessibility,
-and live reload. Keep a useful quick start in the README, linking to the
-live handbook rather than maintaining duplicate detailed guides.
+Detailed public user guides belong in `docs/handbook/site/`: overview,
+installation, CLI usage, and configuration, including appearance, diagnostics,
+accessibility, and live reload. Keep a useful quick start in the README,
+linking to the live handbook rather than maintaining duplicate detailed guides.
 
 The root `CHANGELOG.md` remains the sole curated release-history source. Render
 it during the Jekyll build, including `Unreleased`; never copy entries into a
@@ -54,9 +59,9 @@ second changelog or derive release history from commits or PR titles. Preserve
 the [curated changelog policy](../CONTRIBUTING.md#curated-changelog) and the
 existing application release tooling.
 
-`handbook/_plugins/changelog.rb` reads the root changelog during each build
-and generates the navigable `/changelog/` page. Edit only `CHANGELOG.md` to
-update release history; no handbook copy needs synchronization.
+`docs/handbook/site/_plugins/changelog.rb` reads the root changelog during each
+build and generates the navigable `/changelog/` page. Edit only
+`CHANGELOG.md` to update release history; no handbook copy needs synchronization.
 
 Because the handbook follows `main`, a guide can describe behavior absent from
 the latest installed release. Explicitly label such behavior **Unreleased**
@@ -78,14 +83,17 @@ checks do not prove those interactions work.
 
 ## Pull requests and publication
 
-`.github/workflows/handbook.yml` builds and checks every pull request. This
-includes fork pull requests: checkout credentials are not persisted, the build
-job has only `contents: read`, and no Cloudflare or other publication secrets
-are supplied. PR runs do not upload a Pages artifact or run the deploy job.
+`.github/workflows/handbook.yml` builds and checks every pull request. Jekyll
+commands run from `docs/handbook`, so the checked output and Pages artifact are
+`docs/handbook/_site/`. This includes fork pull requests: checkout credentials
+are not persisted, the build job has only `contents: read`, and no Cloudflare
+or other publication secrets are supplied. PR runs do not upload a Pages
+artifact or run the deploy job.
 
-Every push to `main` rebuilds and checks the production site, uploads `_site`
-as a GitHub Pages artifact, and then deploys that checked artifact through
-`actions/deploy-pages`. Triggers intentionally have no path filters: a
+Every push to `main` rebuilds and checks the production site, uploads
+`docs/handbook/_site/` as a GitHub Pages artifact, and then deploys that
+checked artifact through `actions/deploy-pages`. Triggers intentionally have
+no path filters: a
 canonical-changelog-only update, future configuration content, dependency
 lockfile, plugin, test, or other build-input change must not be missed. This
 also avoids path-filtered required checks leaving PRs pending. Ordinary pushes
