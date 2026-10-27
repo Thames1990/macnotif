@@ -1,8 +1,11 @@
 name: Validate
 
-on:
+"on":
   pull_request:
-    paths: &app_paths
+  push:
+    branches:
+      - "**"
+    paths:
       - Sources/**
       - Resources/**
       - Package.swift
@@ -12,10 +15,7 @@ on:
       - tests/release-*
       - tests/formula-template.sh
       - .github/workflows/validate.yml
-  push:
-    branches:
-      - "**"
-    paths: *app_paths
+      - tests/validate-workflow.rb
 
 permissions:
   contents: read
@@ -25,7 +25,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect app changes
+    runs-on: ubuntu-latest
+    outputs:
+      app: ${{ steps.paths.outputs.app }}
+    steps:
+      - name: Check out source and history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check workflow contract
+        run: ruby tests/validate-workflow.rb
+
+      - name: Detect app paths
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != pull_request ]]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
+              Sources Resources Package.swift Package.resolved scripts templates \
+              ':(glob)tests/release-*' tests/formula-template.sh \
+              .github/workflows/validate.yml tests/validate-workflow.rb; then
+            echo "app=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" != 1 ]]; then
+              echo "Failed to compare app paths (git exit $status)" >&2
+              exit "$status"
+            fi
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-test:
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     name: ${{ matrix.architecture }} macOS
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -55,3 +95,25 @@ jobs:
 
       - name: Test release preparation and controlled publication
         run: bash tests/release-preparation.sh
+
+  validate:
+    name: Validate
+    if: always()
+    needs: [changes, build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          APP_CHANGED: ${{ needs.changes.outputs.app }}
+          BUILD_RESULT: ${{ needs.build-and-test.result }}
+        run: |
+          if [[ "$CHANGES_RESULT" == success ]] && {
+            [[ "$APP_CHANGED" == true && "$BUILD_RESULT" == success ]] ||
+            [[ "$APP_CHANGED" == false && "$BUILD_RESULT" == skipped ]]
+          }; then
+            echo "App validation passed."
+          else
+            echo "App validation failed: changes=$CHANGES_RESULT app=$APP_CHANGED builds=$BUILD_RESULT" >&2
+            exit 1
+          fi

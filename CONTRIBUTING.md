@@ -17,12 +17,26 @@ commit messages or PR titles.
 
 Use `Added`, `Changed`, `Fixed`, and `Breaking Changes` categories where useful,
 omitting empty categories. Internal-only maintenance needs no entry; there is
-no per-PR changelog CI gate. For an intentional maintenance-only release,
+no per-PR changelog CI gate. Standalone handbook, website, and CI changes do not
+belong in app release notes. Mention documentation changes only when they explain
+a shipped behavior change or migration requirement.
+
+For an intentional maintenance-only release,
 explicitly record "No user-facing changes." under `Unreleased`.
 
 Keep one `Unreleased` section above newest-first released sections. Released
 headings use `VERSION - YYYY-MM-DD`, without the tag's `v` prefix. Leave
 `Unreleased` empty when there are no upcoming user-facing changes.
+
+## Required CI checks
+
+The main branch ruleset requires the `Validate` gate, not the individual
+`arm64 macOS` and `x86_64 macOS` jobs. The workflow runs on every PR, compares
+app-related paths against the PR merge base, and builds both architectures only
+when those paths change. The gate succeeds for documentation-only changes and
+fails if change detection or either required build fails or is cancelled.
+Keep the gate required when editing the workflow or repository ruleset; requiring
+path-filtered workflows can leave documentation-only PRs waiting indefinitely.
 
 ## Releases
 

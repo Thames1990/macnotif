@@ -2,11 +2,6 @@
 
 ## Unreleased
 
-### Added
-
-- A searchable documentation handbook covering installation, CLI usage,
-  configuration, and release history, with light and dark reading modes.
-
 ## 1.1.0 - 2026-10-25
 
 ### Added
