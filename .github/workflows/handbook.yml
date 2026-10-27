@@ -19,8 +19,48 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Detect handbook changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      handbook: ${{ steps.paths.outputs.handbook }}
+    steps:
+      - name: Check out source and history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check workflow contract
+        run: ruby tests/handbook-workflow.rb
+
+      - name: Detect handbook paths
+        id: paths
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != pull_request ]]; then
+            echo "handbook=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA...$HEAD_SHA" -- \
+              docs CHANGELOG.md .github/workflows/handbook.yml ':(glob)tests/handbook*'; then
+            echo "handbook=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" != 1 ]]; then
+              echo "Failed to compare handbook paths (git exit $status)" >&2
+              exit "$status"
+            fi
+            echo "handbook=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build and check handbook
+    needs: changes
+    if: needs.changes.outputs.handbook == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -39,9 +79,6 @@ jobs:
           bundler-cache: true
           working-directory: docs/handbook
 
-      - name: Check workflow contract
-        run: ruby tests/handbook-workflow.rb
-
       - name: Build production handbook
         run: bundle exec jekyll build
         working-directory: docs/handbook
@@ -54,6 +91,28 @@ jobs:
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:
           path: docs/handbook/_site
+
+  handbook:
+    name: Handbook
+    if: always()
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required results
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          HANDBOOK_CHANGED: ${{ needs.changes.outputs.handbook }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          if [[ "$CHANGES_RESULT" == success ]] && {
+            [[ "$HANDBOOK_CHANGED" == true && "$BUILD_RESULT" == success ]] ||
+            [[ "$HANDBOOK_CHANGED" == false && "$BUILD_RESULT" == skipped ]]
+          }; then
+            echo "Handbook validation passed."
+          else
+            echo "Handbook validation failed: changes=$CHANGES_RESULT handbook=$HANDBOOK_CHANGED build=$BUILD_RESULT" >&2
+            exit 1
+          fi
 
   deploy:
     name: Publish handbook

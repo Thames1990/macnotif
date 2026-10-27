@@ -30,12 +30,16 @@ headings use `VERSION - YYYY-MM-DD`, without the tag's `v` prefix. Leave
 
 ## Required CI checks
 
-The main branch ruleset requires the `Validate` gate, not the individual
-`arm64 macOS` and `x86_64 macOS` jobs. The workflow runs on every PR, compares
+The main branch ruleset requires the `Validate` and `Handbook` gates, not the
+individual build jobs. Validate runs on every PR, compares
 app-related paths against the PR merge base, and builds both architectures only
 when those paths change. The gate succeeds for documentation-only changes and
 fails if change detection or either required build fails or is cancelled.
-Keep the gate required when editing the workflow or repository ruleset; requiring
+Push validation runs only on `main` and only for app-related changes.
+Handbook also reports a gate on every PR, building only for handbook-related
+changes (including `CHANGELOG.md`). Its gate rejects detection errors, failed
+builds, cancellations, and unexpected skips; publication remains main-only.
+Keep the gates required when editing workflows or the repository ruleset; requiring
 path-filtered workflows can leave documentation-only PRs waiting indefinitely.
 
 ## Releases
