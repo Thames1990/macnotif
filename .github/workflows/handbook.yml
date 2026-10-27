@@ -2,9 +2,20 @@ name: Handbook
 
 "on":
   pull_request:
+    paths:
+      - docs/**
+      - CHANGELOG.md
+      - .github/workflows/handbook.yml
+      - tests/handbook*
   push:
     branches:
       - main
+    paths:
+      - docs/**
+      - CHANGELOG.md
+      - .github/workflows/handbook.yml
+      - tests/handbook*
+  workflow_dispatch:
 
 permissions: {}
 
@@ -44,14 +55,14 @@ jobs:
         run: bash tests/handbook.sh
 
       - name: Upload checked Pages artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:
           path: docs/handbook/_site
 
   deploy:
     name: Publish handbook
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:

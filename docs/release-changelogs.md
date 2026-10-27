@@ -47,7 +47,8 @@ approval gate.
    then tag that exact commit. The commit and annotated tag are pushed
    atomically with ordinary fast-forward/ref-creation checks. An already-finalized
    section is reused rather than duplicated. Do not overwrite concurrent changes, move an existing
-   tag, or bypass branch protections; rejected writes stop the run explicitly.
+   tag, or circumvent rules outside the release app's explicitly authorized
+   PR/check bypass; rejected writes stop the run explicitly.
 4. Build and smoke-test both native architectures using the tagged source.
    Publish the matching version section as the release body in
    `Thames1990/homebrew-tap`, alongside the existing archives, checksums, and
@@ -68,8 +69,12 @@ including workflow wiring. Ordinary validation runs these tests alongside
 the existing formula and native checks, without a per-PR changelog gate.
 
 Preparation requires `main` to still match the dispatch commit. Its source
-write uses only the source workflow token, with no branch-protection bypass.
-The existing tap-only token remains confined to tap publication. The annotated
+write uses a repository-scoped GitHub App installation token from the main-only
+`release-source` environment. Only this app bypasses the main PR/check ruleset;
+the separate force-push/deletion ruleset has no bypass. See the
+[app setup and protection policy](maintainer-releases.md#source-release-app-and-main-protection).
+The workflow token remains read-only, and the existing tap-only token remains
+confined to tap publication. The annotated
 tag records the repository, workflow run ID, dispatch source, and increment;
 if preparation is retried after the atomic push, it recovers this original
 identity before consulting the latest tap release. A different run cannot

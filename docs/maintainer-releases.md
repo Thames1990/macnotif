@@ -20,7 +20,8 @@ It commits only `CHANGELOG.md`, then atomically pushes that commit to `main`
 and an annotated `vVERSION` tag pointing to it. If the selected section was
 already finalized, no changelog commit is needed. Conflicting tags,
 concurrent source updates, and branch-protection/write rejections fail
-explicitly; the workflow never force pushes, moves tags, or bypasses protections.
+explicitly; the workflow never force pushes or moves tags. The dedicated release
+app can bypass only the PR/check ruleset, as described below.
 
 Only manual dispatch publishes; pushing a tag does not start a release.
 Both native arm64 and x86_64 executables are built and smoke-tested from
@@ -49,8 +50,45 @@ permission. Store it as the `HOMEBREW_TAP_TOKEN` Actions secret in the
 public release and update the formula; the token value must not be committed
 or logged.
 
-Source preparation separately uses the workflow's `GITHUB_TOKEN` with
-`contents: write` in the prepare job only. The tap token is not a source-write
-credential. If repository policy rejects the source commit/tag push, resolve
-that policy/access issue through the normal maintainer process; do not widen
-the tap token or bypass branch protections to make a release succeed.
+## Source release app and main protection
+
+Source preparation uses a short-lived GitHub App installation token with
+**Contents: read and write**, restricted to `Thames1990/macnotif`. Register a
+private app under the repository owner's account, disable webhooks, and install
+it on this repository only. It needs no Actions, Workflows, Administration, or
+tap permissions. Store its client ID in the repository Actions variable
+`RELEASE_APP_CLIENT_ID`. Generate a private key and upload the PEM directly as
+the `RELEASE_APP_PRIVATE_KEY` secret in the `release-source` environment, not as
+a repository-wide secret. Never commit or log the key.
+
+Restrict the `release-source` environment to the `main` branch only (selected
+branches and tags, with a branch rule for `main` and no tag rules). The prepare
+job also checks the event and branch before requesting a token. The app token
+is used by checkout and persisted for Git authentication during preparation,
+then revoked by `actions/create-github-app-token` at job completion. It is not
+passed to builds, publication, or installation checks. The workflow's
+`GITHUB_TOKEN` remains read-only and is used to read public tap release metadata;
+the existing tap token remains confined to tap publication.
+
+Unlike pushes authenticated with `GITHUB_TOKEN`, the app's changelog push
+triggers normal validation and the path-filtered handbook publication. A pushed
+tag still does not start another application release.
+
+After these workflow changes are on `main` and the app is installed, configure
+two active branch rulesets targeting `refs/heads/main`:
+
+- **Main integrity:** restrict deletions and block non-fast-forward pushes,
+  with no bypass actors, including the release app.
+- **Main PR and checks:** require a pull request with zero required approvals
+  and successful `arm64 macOS` and `x86_64 macOS` checks from GitHub Actions.
+  Give only the release app an always-allowed bypass of this ruleset so it can
+  atomically push the finalized changelog and tag. Do not require the
+  path-filtered handbook check. No administrator bypass is needed.
+
+The app's bypass is repository-wide for these PR/check rules, not constrained
+to a particular file by GitHub; keep its private key limited to the main-only
+environment and audit changes to release preparation. The release script still
+checks the dispatch identity, concurrent movement, and changelog-only commit.
+If another policy rejects a source write, resolve that policy/access issue
+through the maintainer process rather than widening the tap token or adding
+further bypasses.

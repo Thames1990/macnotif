@@ -10,7 +10,8 @@ class HandbookWorkflowTest < Minitest::Test
 
   def test_pull_requests_build_and_check_without_publication_credentials
     assert @workflow.fetch("on").key?("pull_request")
-    assert_nil @workflow.fetch("on").fetch("pull_request"), "Check every PR without path or branch filters"
+    assert_equal ["paths"], @workflow.fetch("on").fetch("pull_request").keys,
+      "Check relevant PRs regardless of their target branch"
     assert_equal({}, @workflow.fetch("permissions"))
     build = @workflow.fetch("jobs").fetch("build")
     refute build.key?("if"), "The build must not be skipped for PRs"
@@ -26,23 +27,31 @@ class HandbookWorkflowTest < Minitest::Test
     assert_equal false, checkout.fetch("with").fetch("persist-credentials")
   end
 
-  def test_only_checked_main_pushes_can_publish
+  def test_automatic_runs_cover_handbook_inputs_and_checks
+    paths = %w[docs/** CHANGELOG.md .github/workflows/handbook.yml tests/handbook*]
+    %w[pull_request push].each do |event|
+      assert_equal paths, @workflow.fetch("on").fetch(event).fetch("paths"),
+        "Include documentation, canonical changelog, workflow, and handbook checks"
+    end
+  end
+
+  def test_only_checked_main_pushes_and_manual_runs_can_publish
     assert_equal ["main"], @workflow.fetch("on").fetch("push").fetch("branches")
-    assert_equal ["branches"], @workflow.fetch("on").fetch("push").keys,
-      "Main publication must include changelog-only updates and future build inputs"
-    assert_equal %w[pull_request push], @workflow.fetch("on").keys.sort
+    assert_equal %w[branches paths], @workflow.fetch("on").fetch("push").keys.sort
+    assert_equal %w[pull_request push workflow_dispatch], @workflow.fetch("on").keys.sort
+    assert_nil @workflow.fetch("on").fetch("workflow_dispatch")
     assert_equal %w[build deploy], @workflow.fetch("jobs").keys.sort
-    main_push = "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    main_publication = "(github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'"
     build = @workflow.fetch("jobs").fetch("build")
     upload = build.fetch("steps").find do |step|
       step.fetch("uses", "").start_with?("actions/upload-pages-artifact@")
     end
     refute_nil upload, "Checked output must be passed through a Pages artifact"
-    assert_equal main_push, upload.fetch("if")
+    assert_equal main_publication, upload.fetch("if")
     assert_equal "docs/handbook/_site", upload.fetch("with").fetch("path")
     assert_equal upload, build.fetch("steps").last, "Never upload before output checks pass"
     deploy = @workflow.fetch("jobs").fetch("deploy")
-    assert_equal main_push, deploy.fetch("if")
+    assert_equal main_publication, deploy.fetch("if")
     assert_equal "build", deploy.fetch("needs")
     assert_equal({"pages" => "write", "id-token" => "write"}, deploy.fetch("permissions"))
     assert_equal "github-pages", deploy.fetch("environment").fetch("name")

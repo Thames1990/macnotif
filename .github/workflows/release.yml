@@ -23,18 +23,30 @@ concurrency:
 jobs:
   prepare:
     name: Finalize changelog and tag release source
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    environment: release-source
     outputs:
       tag_name: ${{ steps.release.outputs.tag_name }}
       source_commit: ${{ steps.release.outputs.source_commit }}
     steps:
+      - name: Create source release token
+        id: source-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
       - name: Check out dispatch source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          token: ${{ steps.source-token.outputs.token }}
+          persist-credentials: true
 
       - name: Prepare release source
         id: release

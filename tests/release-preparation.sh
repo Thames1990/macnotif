@@ -433,7 +433,20 @@ assert "  workflow_dispatch:" in triggers
 assert not re.search(r"^  (push|release|workflow_run|schedule):", triggers, re.M)
 assert "group: homebrew-tap-release\n  cancel-in-progress: false" in workflow
 prepare = workflow.split("\n  prepare:", 1)[1].split("\n  build:", 1)[0]
-assert "contents: write" in prepare
+assert "if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'" in prepare
+assert "environment: release-source" in prepare
+assert "\n    permissions:" not in prepare, "Preparation inherits contents: read for GITHUB_TOKEN"
+assert "uses: actions/create-github-app-token@" in prepare
+assert re.search(r"uses: actions/create-github-app-token@[0-9a-f]{40} # v", prepare)
+assert "client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}" in prepare
+assert "private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}" in prepare
+assert "owner: ${{ github.repository_owner }}" in prepare
+assert "repositories: ${{ github.event.repository.name }}" in prepare
+assert "permission-contents: write" in prepare
+assert "token: ${{ steps.source-token.outputs.token }}" in prepare
+assert "persist-credentials: true" in prepare, "Git pushes must use the app token"
+assert prepare.index("Create source release token") < prepare.index("Check out dispatch source")
+assert "skip-token-revoke:" not in prepare
 assert "GH_TOKEN: ${{ github.token }}" in prepare
 assert "HOMEBREW_TAP_TOKEN" not in prepare
 assert "RUN_ID: ${{ github.run_id }}" in prepare
@@ -446,6 +459,8 @@ for job, following in (("build", "publish"), ("publish", "verify-install"), ("ve
     if following:
         block = block.split(f"\n  {following}:", 1)[0]
     assert "ref: ${{ needs.prepare.outputs.source_commit }}" in block
+    assert "RELEASE_APP_" not in block
+    assert "source-token" not in block, "App credentials stay in preparation only"
 build = workflow.split("\n  build:", 1)[1].split("\n  publish:", 1)[0]
 assert "python3 scripts/release.py notes" in build
 assert "bash tests/release-smoke.sh build/macnotif" in build

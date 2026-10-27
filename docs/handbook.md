@@ -86,25 +86,32 @@ checks do not prove those interactions work.
 
 ## Pull requests and publication
 
-`.github/workflows/handbook.yml` builds and checks every pull request. Jekyll
+`.github/workflows/handbook.yml` builds and checks pull requests that change
+`docs/**`, `CHANGELOG.md`, `.github/workflows/handbook.yml`, or
+`tests/handbook*`. Jekyll
 commands run from `docs/handbook`, so the checked output and Pages artifact are
 `docs/handbook/_site/`. This includes fork pull requests: checkout credentials
 are not persisted, the build job has only `contents: read`, and no Cloudflare
 or other publication secrets are supplied. PR runs do not upload a Pages
 artifact or run the deploy job.
 
-Every push to `main` rebuilds and checks the production site, uploads
-`docs/handbook/_site/` as a GitHub Pages artifact, and then deploys that
-checked artifact through `actions/deploy-pages`. Triggers intentionally have
-no path filters: a
-canonical-changelog-only update, future configuration content, dependency
-lockfile, plugin, test, or other build-input change must not be missed. This
-also avoids path-filtered required checks leaving PRs pending. Ordinary pushes
+Pushes to `main` matching the same path filters rebuild and check the production
+site, upload `docs/handbook/_site/` as a GitHub Pages artifact, and then deploy that
+checked artifact through `actions/deploy-pages`. These filters include
+canonical-changelog-only updates, documentation, dependency lockfiles, plugins,
+and handbook checks while skipping unrelated application changes. When adding
+build inputs or checks outside these paths, extend both trigger filters and the
+workflow contract test. Do not make the path-filtered handbook check a required
+PR check: GitHub leaves skipped required checks pending. Ordinary pushes
 to other branches and application release tags do not publish the handbook.
+
+Use `workflow_dispatch` for a manual rebuild without changing a file. Manual
+runs on `main` also publish the checked artifact; manual runs on other branches
+only build and check, with no Pages artifact upload or deployment.
 
 Permissions are denied by default and granted by job. Only the deploy job has
 `pages: write` and `id-token: write`; it uses the `github-pages` environment and
-does not check out or execute source. Its main-push guard and successful-build
+does not check out or execute source. Its main-only push/manual guard and successful-build
 dependency are mandatory. PR runs supersede older runs for the same ref;
 main publications are serialized without cancelling an in-progress deployment.
 Keep action references pinned to full commit SHAs with version comments, and
