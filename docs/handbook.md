@@ -56,9 +56,10 @@ installation, CLI usage, and configuration, including appearance, diagnostics,
 accessibility, and live reload. Keep a useful quick start in the README,
 linking to the live handbook rather than maintaining duplicate detailed guides.
 
-The root `CHANGELOG.md` remains the sole curated release-history source. Render
-it during the Jekyll build, including `Unreleased`; never copy entries into a
-second changelog or derive release history from commits or PR titles. Preserve
+The root `CHANGELOG.md` remains the sole curated release-history source. The
+handbook renders its released sections during the Jekyll build and omits
+`Unreleased`, which is not part of a Homebrew release. Never copy entries into
+a second changelog or derive release history from commits or PR titles. Preserve
 the [curated changelog policy](../CONTRIBUTING.md#curated-changelog) and the
 existing application release tooling.
 
