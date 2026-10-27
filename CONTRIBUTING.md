@@ -17,7 +17,11 @@ commit messages or PR titles.
 
 Use `Added`, `Changed`, `Fixed`, and `Breaking Changes` categories where useful,
 omitting empty categories. Internal-only maintenance needs no entry; there is
-no per-PR changelog CI gate. For an intentional maintenance-only release,
+no per-PR changelog CI gate. Standalone handbook, website, and CI changes do not
+belong in app release notes. Mention documentation changes only when they explain
+a shipped behavior change or migration requirement.
+
+For an intentional maintenance-only release,
 explicitly record "No user-facing changes." under `Unreleased`.
 
 Keep one `Unreleased` section above newest-first released sections. Released
