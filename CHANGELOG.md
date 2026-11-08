@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- Avoid repeatedly parsing unchanged configuration while the HUD is idle,
+  while preserving live reload for in-place edits and recovery from read errors.
+
 ## 1.1.0 - 2026-10-25
 
 ### Added

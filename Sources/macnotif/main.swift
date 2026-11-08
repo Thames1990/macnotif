@@ -260,7 +260,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
     private var configuration = startupConfiguration
     private var lastConfigurationError: String?
-    private var lastConfigurationFileSignature: String?
+    private var lastConfigurationSource: String?
     private var hasLoadedConfiguration = false
     private var panel: NSPanel!
     private var permanentBar: NoticeBar!
@@ -476,40 +476,23 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     }
 
     private func reloadConfigurationIfChanged() {
-        let signature: String?
+        let source: String?
         do {
-            signature = try configurationFileSignature()
+            source = try NoticeConfiguration.readSource()
         } catch {
             reportConfigurationError(error)
             hasLoadedConfiguration = false
             return
         }
-        guard !hasLoadedConfiguration || signature != lastConfigurationFileSignature else { return }
-        lastConfigurationFileSignature = signature
+        guard !hasLoadedConfiguration || source != lastConfigurationSource else { return }
+        lastConfigurationSource = source
         hasLoadedConfiguration = true
         do {
-            configuration = try NoticeConfiguration.load()
+            configuration = try NoticeConfiguration.load(source: source)
             lastConfigurationError = nil
         } catch {
             reportConfigurationError(error)
         }
-    }
-
-    private func configurationFileSignature() throws -> String? {
-        let url = NoticeConfiguration.configurationURL()
-        let attributes: [FileAttributeKey: Any]
-        do {
-            attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
-            return nil
-        } catch {
-            throw ConfigurationError(description: "macnotif: \(url.path): \(error.localizedDescription)")
-        }
-        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
-        let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
-        let fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
-        let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
-        return "\(modified):\(size):\(fileNumber):\(permissions)"
     }
 
     private func reportConfigurationError(_ error: Error) {

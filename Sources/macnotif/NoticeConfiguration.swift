@@ -140,16 +140,23 @@ struct NoticeConfiguration {
     }
 
     static func load() throws -> NoticeConfiguration {
+        try load(source: readSource())
+    }
+
+    static func readSource() throws -> String? {
         let url = configurationURL()
-        let source: String
         do {
-            source = try String(contentsOf: url, encoding: .utf8)
+            return try String(contentsOf: url, encoding: .utf8)
         } catch CocoaError.fileReadNoSuchFile {
-            return NoticeConfiguration()
+            return nil
         } catch {
             throw ConfigurationError(description: "macnotif: \(url.path): \(error.localizedDescription)")
         }
+    }
 
+    static func load(source: String?) throws -> NoticeConfiguration {
+        guard let source else { return NoticeConfiguration() }
+        let url = configurationURL()
         do {
             let table = try TOMLTable(string: source)
             var configuration = NoticeConfiguration()
