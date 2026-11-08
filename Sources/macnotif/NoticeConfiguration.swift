@@ -132,11 +132,15 @@ struct NoticeConfiguration {
     var displayID: UInt32?
     var layout = LayoutConfiguration()
 
-    static func load() throws -> NoticeConfiguration {
+    static func configurationURL() -> URL {
         let directory = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config")
-        let url = directory.appendingPathComponent("macnotif.toml")
+        return directory.appendingPathComponent("macnotif.toml")
+    }
+
+    static func load() throws -> NoticeConfiguration {
+        let url = configurationURL()
         let source: String
         do {
             source = try String(contentsOf: url, encoding: .utf8)

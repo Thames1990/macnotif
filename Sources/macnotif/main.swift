@@ -88,6 +88,7 @@ func runCommandLine(configuration: NoticeConfiguration) throws {
     }
     let process = Process()
     process.executableURL = executableURL
+    process.environment = ProcessInfo.processInfo.environment
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
@@ -259,6 +260,8 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
     private var configuration = startupConfiguration
     private var lastConfigurationError: String?
+    private var lastConfigurationFileSignature: String?
+    private var hasLoadedConfiguration = false
     private var panel: NSPanel!
     private var permanentBar: NoticeBar!
     private var temporaryBar: NoticeBar!
@@ -414,16 +417,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     }
 
     private func refresh() {
-        do {
-            configuration = try NoticeConfiguration.load()
-            lastConfigurationError = nil
-        } catch {
-            let diagnostic = String(describing: error)
-            if diagnostic != lastConfigurationError {
-                logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
-                lastConfigurationError = diagnostic
-            }
-        }
+        reloadConfigurationIfChanged()
         let permanent = readMessage(at: permanentURL)
         let storedTemporary = readMessage(at: temporaryURL)
         let temporary = storedTemporary.flatMap { message -> HUDMessage? in
@@ -479,6 +473,51 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         }
         panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
+    }
+
+    private func reloadConfigurationIfChanged() {
+        let signature: String?
+        do {
+            signature = try configurationFileSignature()
+        } catch {
+            reportConfigurationError(error)
+            hasLoadedConfiguration = false
+            return
+        }
+        guard !hasLoadedConfiguration || signature != lastConfigurationFileSignature else { return }
+        lastConfigurationFileSignature = signature
+        hasLoadedConfiguration = true
+        do {
+            configuration = try NoticeConfiguration.load()
+            lastConfigurationError = nil
+        } catch {
+            reportConfigurationError(error)
+        }
+    }
+
+    private func configurationFileSignature() throws -> String? {
+        let url = NoticeConfiguration.configurationURL()
+        let attributes: [FileAttributeKey: Any]
+        do {
+            attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+        } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
+            return nil
+        } catch {
+            throw ConfigurationError(description: "macnotif: \(url.path): \(error.localizedDescription)")
+        }
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        let size = (attributes[.size] as? NSNumber)?.uint64Value ?? 0
+        let fileNumber = (attributes[.systemFileNumber] as? NSNumber)?.uint64Value ?? 0
+        let permissions = (attributes[.posixPermissions] as? NSNumber)?.uint16Value ?? 0
+        return "\(modified):\(size):\(fileNumber):\(permissions)"
+    }
+
+    private func reportConfigurationError(_ error: Error) {
+        let diagnostic = String(describing: error)
+        if diagnostic != lastConfigurationError {
+            logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
+            lastConfigurationError = diagnostic
+        }
     }
 }
 

@@ -299,6 +299,7 @@ func invoke(_ arguments: [String]) throws {
     let process = Process()
     process.executableURL = binaryURL
     process.arguments = arguments
+    process.environment = ProcessInfo.processInfo.environment
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
