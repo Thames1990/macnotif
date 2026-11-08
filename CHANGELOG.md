@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.1 - 2026-11-08
+
 ### Changed
 
 - Avoid repeatedly parsing unchanged configuration while the HUD is idle,
