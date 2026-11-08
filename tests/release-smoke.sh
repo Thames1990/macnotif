@@ -48,6 +48,24 @@ before_pids=$(hud_pids)
 mkdir -p "$test_home/.config"
 config_file="$test_home/.config/macnotif.toml"
 
+# Verify Foundation's resolved paths in a child before any notice can be written.
+swift - "$test_home" <<'SWIFT'
+import Foundation
+
+let root = URL(fileURLWithPath: CommandLine.arguments[1]).resolvingSymlinksInPath()
+let environment = ProcessInfo.processInfo.environment
+let home = FileManager.default.homeDirectoryForCurrentUser.resolvingSymlinksInPath()
+guard home == root,
+      environment["HOME"].map({ URL(fileURLWithPath: $0).resolvingSymlinksInPath() }) == root,
+      environment["CFFIXED_USER_HOME"].map({ URL(fileURLWithPath: $0).resolvingSymlinksInPath() }) == root,
+      environment["XDG_CONFIG_HOME"] == nil,
+      home.appendingPathComponent(".config").resolvingSymlinksInPath().path.hasPrefix(root.path + "/"),
+      home.appendingPathComponent("Library/Application Support/MacNotif")
+        .resolvingSymlinksInPath().path.hasPrefix(root.path + "/") else {
+    fatalError("Release smoke child environment or resolved paths are not isolated")
+}
+SWIFT
+
 expect_config_error() {
     local contents=$1 diagnostic=$2
     printf '%s\n' "$contents" > "$config_file"
@@ -299,6 +317,7 @@ func invoke(_ arguments: [String]) throws {
     let process = Process()
     process.executableURL = binaryURL
     process.arguments = arguments
+    process.environment = ProcessInfo.processInfo.environment
     try process.run()
     process.waitUntilExit()
     guard process.terminationStatus == 0 else {
@@ -359,6 +378,36 @@ vertical_inset = 53
 mode = "permanent"
 duration = 7
 """.write(to: configURL, atomically: true, encoding: .utf8)
+try FileManager.default.setAttributes(
+    [.modificationDate: Date(timeIntervalSince1970: 1_700_000_000)], ofItemAtPath: configURL.path
+)
+expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+// Same-size in-place edits with restored mtime must update this same HUD.
+let originalAttributes = try FileManager.default.attributesOfItem(atPath: configURL.path)
+let originalSource = try String(contentsOf: configURL, encoding: .utf8)
+try originalSource.replacingOccurrences(of: "width = 432", with: "width = 456")
+    .write(to: configURL, atomically: false, encoding: .utf8)
+try FileManager.default.setAttributes(
+    [.modificationDate: originalAttributes[.modificationDate]!], ofItemAtPath: configURL.path
+)
+let editedAttributes = try FileManager.default.attributesOfItem(atPath: configURL.path)
+for key: FileAttributeKey in [.modificationDate, .size, .systemFileNumber, .posixPermissions] {
+    guard (originalAttributes[key] as? NSObject) == (editedAttributes[key] as? NSObject) else {
+        fatalError("Regression setup unexpectedly changed \(key)")
+    }
+}
+expectPanel(width: 456, anchor: "bottom-left", horizontal: 41, vertical: 53)
+try originalSource.write(to: configURL, atomically: false, encoding: .utf8)
+expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+// Read failures keep known-good settings, then retry after permissions recover.
+try FileManager.default.setAttributes([.posixPermissions: 0o200], ofItemAtPath: configURL.path)
+try originalSource.replacingOccurrences(of: "width = 432", with: "width = 456")
+    .write(to: configURL, atomically: false, encoding: .utf8)
+Thread.sleep(forTimeInterval: 0.6)
+expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
+try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
+expectPanel(width: 456, anchor: "bottom-left", horizontal: 41, vertical: 53)
+try originalSource.write(to: configURL, atomically: false, encoding: .utf8)
 expectPanel(width: 432, anchor: "bottom-left", horizontal: 41, vertical: 53)
 try invoke(["--title", "Reloaded Notice defaults"])
 try expectNotice(at: permanentURL, title: "Reloaded Notice defaults", duration: nil)
@@ -426,6 +475,7 @@ grep -Fq 'Configured display 4000000002 is unavailable; using the main display' 
 grep -Fq "keeping last known-good settings: macnotif: $config_file: notice.duration must be" "$test_home/reload-log"
 grep -Fq "keeping last known-good settings: macnotif: $config_file: unknown setting appearance.unknown" "$test_home/reload-log"
 grep -Fq "keeping last known-good settings: macnotif: $config_file:1:" "$test_home/reload-log"
+grep -Fq "permission" "$test_home/reload-log"
 test "$(grep -Fc 'notice.duration must be' "$test_home/reload-log")" = 1
 kill "$log_stream_pid"
 wait "$log_stream_pid" 2>/dev/null || true

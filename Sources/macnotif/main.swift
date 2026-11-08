@@ -88,6 +88,7 @@ func runCommandLine(configuration: NoticeConfiguration) throws {
     }
     let process = Process()
     process.executableURL = executableURL
+    process.environment = ProcessInfo.processInfo.environment
     process.standardInput = FileHandle.nullDevice
     process.standardOutput = FileHandle.nullDevice
     process.standardError = FileHandle.nullDevice
@@ -259,6 +260,8 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "com.mohrworks.macnotif", category: "HUD")
     private var configuration = startupConfiguration
     private var lastConfigurationError: String?
+    private var lastConfigurationSource: String?
+    private var hasLoadedConfiguration = false
     private var panel: NSPanel!
     private var permanentBar: NoticeBar!
     private var temporaryBar: NoticeBar!
@@ -414,16 +417,7 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
     }
 
     private func refresh() {
-        do {
-            configuration = try NoticeConfiguration.load()
-            lastConfigurationError = nil
-        } catch {
-            let diagnostic = String(describing: error)
-            if diagnostic != lastConfigurationError {
-                logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
-                lastConfigurationError = diagnostic
-            }
-        }
+        reloadConfigurationIfChanged()
         let permanent = readMessage(at: permanentURL)
         let storedTemporary = readMessage(at: temporaryURL)
         let temporary = storedTemporary.flatMap { message -> HUDMessage? in
@@ -479,6 +473,34 @@ final class HUDApplication: NSObject, NSApplicationDelegate {
         }
         panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
+    }
+
+    private func reloadConfigurationIfChanged() {
+        let source: String?
+        do {
+            source = try NoticeConfiguration.readSource()
+        } catch {
+            reportConfigurationError(error)
+            hasLoadedConfiguration = false
+            return
+        }
+        guard !hasLoadedConfiguration || source != lastConfigurationSource else { return }
+        lastConfigurationSource = source
+        hasLoadedConfiguration = true
+        do {
+            configuration = try NoticeConfiguration.load(source: source)
+            lastConfigurationError = nil
+        } catch {
+            reportConfigurationError(error)
+        }
+    }
+
+    private func reportConfigurationError(_ error: Error) {
+        let diagnostic = String(describing: error)
+        if diagnostic != lastConfigurationError {
+            logger.error("Cannot reload configuration; keeping last known-good settings: \(diagnostic, privacy: .public)")
+            lastConfigurationError = diagnostic
+        }
     }
 }
 

@@ -132,20 +132,31 @@ struct NoticeConfiguration {
     var displayID: UInt32?
     var layout = LayoutConfiguration()
 
-    static func load() throws -> NoticeConfiguration {
+    static func configurationURL() -> URL {
         let directory = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config")
-        let url = directory.appendingPathComponent("macnotif.toml")
-        let source: String
+        return directory.appendingPathComponent("macnotif.toml")
+    }
+
+    static func load() throws -> NoticeConfiguration {
+        try load(source: readSource())
+    }
+
+    static func readSource() throws -> String? {
+        let url = configurationURL()
         do {
-            source = try String(contentsOf: url, encoding: .utf8)
+            return try String(contentsOf: url, encoding: .utf8)
         } catch CocoaError.fileReadNoSuchFile {
-            return NoticeConfiguration()
+            return nil
         } catch {
             throw ConfigurationError(description: "macnotif: \(url.path): \(error.localizedDescription)")
         }
+    }
 
+    static func load(source: String?) throws -> NoticeConfiguration {
+        guard let source else { return NoticeConfiguration() }
+        let url = configurationURL()
         do {
             let table = try TOMLTable(string: source)
             var configuration = NoticeConfiguration()
